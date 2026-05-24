@@ -66,7 +66,7 @@ Step 7 以降（3D プレビュー / 複数入力 / エラー処理強化 / OSS 
 | # | タスク | 状態 |
 | --- | --- | --- |
 | 1 | 最小スクリプト「PNG → STL」 | ✅ 完了（`python/heightmap_to_stl.py`） |
-| 2 | `--invert` / `--threshold` 追加 | ⬜ 未着手 |
+| 2 | `--invert` / `--threshold` 追加 | ✅ 完了（同上スクリプトに統合） |
 | 3 | PDF 入力対応 | ⬜ 未着手 |
 | 4 | 設定の JSON 化 | ⬜ 未着手 |
 | 5 | Python パッケージ化 | ⬜ 未着手 |
@@ -104,11 +104,16 @@ meshforge/
 .venv/bin/python python/heightmap_to_stl.py samples/dome.png samples/dome.stl
 ```
 
-### Step 2（予定）
+### Step 2（実装済み）
 
 ```sh
-python python/heightmap_to_stl.py input.png output.stl --invert --threshold 128
+# 黒い壁線 / 白い床の建築平面図から、壁が立ち上がった STL を出す
+.venv/bin/python python/heightmap_to_stl.py floorplan.png floorplan.stl --invert --threshold 128
 ```
+
+- `--invert`: 明度を反転（黒壁 / 白床の平面図向け）
+- `--threshold N`: `0..255` で二値化（N 未満は床、N 以上は壁の最大高さ）
+- 両方省略すれば Step 1 と同じ素のハイトマップ押し出し
 
 ### Step 5（予定）
 

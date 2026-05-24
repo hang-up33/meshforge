@@ -1,5 +1,6 @@
-"""PNG -> binary STL via simple heightmap extrusion (meshforge Step 1)."""
+"""PNG -> binary STL via simple heightmap extrusion (meshforge Step 1-2)."""
 
+import argparse
 import sys
 
 import numpy as np
@@ -59,15 +60,41 @@ def heightmap_to_mesh(heights: np.ndarray) -> trimesh.Trimesh:
 
 
 def main() -> int:
-    if len(sys.argv) != 3:
-        print("usage: heightmap_to_stl.py input.png output.stl", file=sys.stderr)
-        return 1
-    arr = np.array(Image.open(sys.argv[1]).convert("L"), dtype=np.float32)
+    parser = argparse.ArgumentParser(
+        description="PNG -> binary STL via simple heightmap extrusion",
+    )
+    parser.add_argument("input", help="input PNG path")
+    parser.add_argument("output", help="output STL path")
+    parser.add_argument(
+        "--invert",
+        action="store_true",
+        help="invert brightness (use for black-wall / white-floor floorplans)",
+    )
+    parser.add_argument(
+        "--threshold",
+        type=int,
+        default=None,
+        metavar="N",
+        help="binarise heights: pixels < N -> floor, pixels >= N -> full height (0-255)",
+    )
+    args = parser.parse_args()
+
+    if args.threshold is not None and not 0 <= args.threshold <= 255:
+        parser.error(f"--threshold must be in 0..255 (got {args.threshold})")
+
+    arr = np.array(Image.open(args.input).convert("L"), dtype=np.float32)
+    # Invert first so --threshold compares against the post-invert brightness;
+    # for a black-wall floorplan the user expects "threshold = wall darkness",
+    # not "threshold = floor brightness".
+    if args.invert:
+        arr = 255.0 - arr
+    if args.threshold is not None:
+        arr = np.where(arr >= args.threshold, 255.0, 0.0)
     heights = arr / 255.0 * MAX_HEIGHT_MM
     mesh = heightmap_to_mesh(heights)
-    mesh.export(sys.argv[2])
+    mesh.export(args.output)
     print(
-        f"wrote {sys.argv[2]}  "
+        f"wrote {args.output}  "
         f"verts={len(mesh.vertices)}  faces={len(mesh.faces)}  "
         f"watertight={mesh.is_watertight}"
     )
