@@ -6,17 +6,27 @@ import numpy as np
 import trimesh
 from PIL import Image
 
-PIXEL_MM = 0.5         # 1 pixel = 0.5 mm in X/Y
+PIXEL_MM = 0.5         # each input pixel is a PIXEL_MM × PIXEL_MM cell in X/Y
 MAX_HEIGHT_MM = 10.0   # brightness 255 -> 10 mm tall
 BASE_MM = 1.0          # solid base thickness
 
 
 def heightmap_to_mesh(heights: np.ndarray) -> trimesh.Trimesh:
-    h, w = heights.shape
+    # Treat each pixel as a PIXEL_MM × PIXEL_MM cell. Vertices sit at cell
+    # corners, so a W×H pixel image becomes a mesh spanning exactly
+    # W*PIXEL_MM × H*PIXEL_MM (e.g. 64 px @ 0.5 mm/px -> 32.0 mm, not 31.5).
+    # Corner heights are the 2x2 average of the (edge-padded) pixel grid,
+    # which also makes a 1×1 input a single valid cell instead of a
+    # degenerate wall-only mesh.
+    if heights.ndim != 2 or heights.size == 0:
+        raise ValueError(f"heights must be a non-empty 2D array, got shape={heights.shape}")
+    padded = np.pad(heights, 1, mode="edge")
+    corners = (padded[:-1, :-1] + padded[:-1, 1:] + padded[1:, :-1] + padded[1:, 1:]) / 4.0
+    h, w = corners.shape  # (H+1, W+1)
     xs = np.arange(w) * PIXEL_MM
     ys = np.arange(h) * PIXEL_MM
     xx, yy = np.meshgrid(xs, ys)
-    z_top = heights + BASE_MM
+    z_top = corners + BASE_MM
     z_bot = np.zeros_like(z_top)
     top = np.stack([xx, yy, z_top], axis=-1).reshape(-1, 3)
     bot = np.stack([xx, yy, z_bot], axis=-1).reshape(-1, 3)
