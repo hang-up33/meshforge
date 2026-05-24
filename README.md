@@ -65,7 +65,7 @@ Step 7 以降（3D プレビュー / 複数入力 / エラー処理強化 / OSS 
 
 | # | タスク | 状態 |
 | --- | --- | --- |
-| 1 | 最小スクリプト「PNG → STL」 | ⬜ 未着手 |
+| 1 | 最小スクリプト「PNG → STL」 | ✅ 完了（`python/heightmap_to_stl.py`） |
 | 2 | `--invert` / `--threshold` 追加 | ⬜ 未着手 |
 | 3 | PDF 入力対応 | ⬜ 未着手 |
 | 4 | 設定の JSON 化 | ⬜ 未着手 |
@@ -94,10 +94,14 @@ meshforge/
 
 ## 使い方（Step 進行ごとに更新）
 
-### Step 1（予定）
+### Step 1（実装済み）
 
 ```sh
-python python/heightmap_to_stl.py input.png output.stl
+# サンプル PNG を作る
+.venv/bin/python python/make_sample.py samples/dome.png
+
+# PNG → STL
+.venv/bin/python python/heightmap_to_stl.py samples/dome.png samples/dome.stl
 ```
 
 ### Step 2（予定）
@@ -119,6 +123,29 @@ python -m meshforge convert config.json
 - 抽象化・テスト・エラー処理は「必要になってから」入れる
 - 計画を膨らませず、必要になったら都度追加
 - ユーザー指示「一歩一歩着実に」を最優先
+
+## 開発ループ（Claude 実装 → Codex レビュー → Claude 修正）
+
+```
+[Claude が feature branch で実装]
+        ↓
+[gh pr create で PR を開く]
+        ↓
+[Codex でレビュー]
+        ├─ ローカル: scripts/codex-review.sh → .codex/reviews/*.md
+        └─ GitHub: PR コメント
+        ↓
+[Claude が指摘を反映 → 同じブランチに追加コミット]
+        ↓
+   レビューが落ち着く ──→ マージ
+```
+
+スラッシュコマンド:
+- `/codex-review [base]` — 現在ブランチを Codex reviewer エージェントにレビューさせる
+- `/apply-pr-feedback [pr <N> | file <path>]` — PR コメント / レビューファイルを読んで修正
+
+共通規約: [AGENTS.md](AGENTS.md)（Claude と Codex の両方が読む）。
+詳細セットアップ: `.codex/config.toml`、`.codex/agents/`、`.claude/commands/`。
 
 ## 各ステップの「やらないこと」
 
