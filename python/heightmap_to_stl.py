@@ -20,6 +20,9 @@ def heightmap_to_mesh(heights: np.ndarray) -> trimesh.Trimesh:
     # degenerate wall-only mesh.
     if heights.ndim != 2 or heights.size == 0:
         raise ValueError(f"heights must be a non-empty 2D array, got shape={heights.shape}")
+    # Promote before the 2x2 sum so a uint8 input (e.g. raw PIL array passed
+    # straight to this function) doesn't overflow into garbage heights.
+    heights = np.asarray(heights, dtype=np.float64)
     padded = np.pad(heights, 1, mode="edge")
     corners = (padded[:-1, :-1] + padded[:-1, 1:] + padded[1:, :-1] + padded[1:, 1:]) / 4.0
     h, w = corners.shape  # (H+1, W+1)
