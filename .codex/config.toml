@@ -1,0 +1,26 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+# meshforge プロジェクト用 Codex 設定。
+# - Claude 実装 → Codex レビュー → Claude 修正 のループで使う。
+# - レビュー出力は scripts/codex-review.sh 経由で .codex/reviews/ に保存。
+
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+web_search = "live"
+
+persistent_instructions = "Follow AGENTS.md guidelines. The project is in a step-by-step build mode — flag scope creep that violates the current step's 'don't do' list."
+
+[features]
+multi_agent = true
+
+[agents]
+max_threads = 4
+max_depth = 1
+
+[agents.reviewer]
+description = "PR reviewer focused on correctness, watertight STL geometry, scope creep, and missing edge cases."
+config_file = "agents/reviewer.toml"
+
+[agents.explorer]
+description = "Read-only codebase explorer for gathering evidence before changes are proposed."
+config_file = "agents/explorer.toml"
