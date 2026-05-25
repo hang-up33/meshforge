@@ -1,5 +1,6 @@
-"""PNG -> binary STL via simple heightmap extrusion (meshforge Step 1)."""
+"""PNG -> binary STL via simple heightmap extrusion (meshforge Step 1-2)."""
 
+import argparse
 import sys
 
 import numpy as np
@@ -58,16 +59,44 @@ def heightmap_to_mesh(heights: np.ndarray) -> trimesh.Trimesh:
     return trimesh.Trimesh(vertices=verts, faces=faces, process=True)
 
 
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="PNG -> binary STL heightmap.")
+    p.add_argument("input")
+    p.add_argument("output")
+    # Floor plans usually have dark walls on a light background; inverting makes
+    # the walls (not the floor) rise.
+    p.add_argument(
+        "--invert",
+        action="store_true",
+        help="invert brightness so dark pixels become tall (e.g. floor-plan walls)",
+    )
+    # Binarize before extrusion to get clean vertical walls instead of ramps
+    # from grayscale anti-aliasing in the source image.
+    p.add_argument(
+        "--threshold",
+        type=int,
+        default=None,
+        metavar="N",
+        help="binarize at this 0..255 value (>= N -> max height, else flat)",
+    )
+    return p.parse_args(argv)
+
+
 def main() -> int:
-    if len(sys.argv) != 3:
-        print("usage: heightmap_to_stl.py input.png output.stl", file=sys.stderr)
+    args = parse_args(sys.argv[1:])
+    if args.threshold is not None and not 0 <= args.threshold <= 255:
+        print("--threshold must be in 0..255", file=sys.stderr)
         return 1
-    arr = np.array(Image.open(sys.argv[1]).convert("L"), dtype=np.float32)
+    arr = np.array(Image.open(args.input).convert("L"), dtype=np.float32)
+    if args.invert:
+        arr = 255.0 - arr
+    if args.threshold is not None:
+        arr = np.where(arr >= args.threshold, 255.0, 0.0)
     heights = arr / 255.0 * MAX_HEIGHT_MM
     mesh = heightmap_to_mesh(heights)
-    mesh.export(sys.argv[2])
+    mesh.export(args.output)
     print(
-        f"wrote {sys.argv[2]}  "
+        f"wrote {args.output}  "
         f"verts={len(mesh.vertices)}  faces={len(mesh.faces)}  "
         f"watertight={mesh.is_watertight}"
     )

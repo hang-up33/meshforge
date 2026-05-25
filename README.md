@@ -66,7 +66,7 @@ Step 7 以降（3D プレビュー / 複数入力 / エラー処理強化 / OSS 
 | # | タスク | 状態 |
 | --- | --- | --- |
 | 1 | 最小スクリプト「PNG → STL」 | ✅ 完了（`python/heightmap_to_stl.py`） |
-| 2 | `--invert` / `--threshold` 追加 | ⬜ 未着手 |
+| 2 | `--invert` / `--threshold` 追加 | ✅ 完了（建築ジオラマ用） |
 | 3 | PDF 入力対応 | ⬜ 未着手 |
 | 4 | 設定の JSON 化 | ⬜ 未着手 |
 | 5 | Python パッケージ化 | ⬜ 未着手 |
@@ -104,10 +104,19 @@ meshforge/
 .venv/bin/python python/heightmap_to_stl.py samples/dome.png samples/dome.stl
 ```
 
-### Step 2（予定）
+### Step 2（実装済み）
+
+建築平面図のように「黒線が壁、白が床」の画像から壁を立ち上げる場合は
+`--invert` で明暗を反転し、`--threshold` でアンチエイリアスを切って
+垂直な壁にする。
 
 ```sh
-python python/heightmap_to_stl.py input.png output.stl --invert --threshold 128
+# サンプル平面図を作る（黒い外壁＋仕切り＋ドア開口）
+.venv/bin/python python/make_sample.py samples/floorplan.png floorplan
+
+# 壁が立ち上がる STL を出す
+.venv/bin/python python/heightmap_to_stl.py samples/floorplan.png samples/floorplan.stl \
+    --invert --threshold 128
 ```
 
 ### Step 5（予定）
