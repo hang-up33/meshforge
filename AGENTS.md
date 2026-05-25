@@ -53,7 +53,7 @@ meshforge は「PDF（仕様書 / 図面）→ 編集可能な 3D モデル → 
 
 ## コーディング規約
 
-- Step 5 で `python/meshforge/` パッケージに分割済。新規ロジックは適切なモジュール（heightmap / mesh / stl / cli）に置く
+- Step 5 で `python/meshforge/` パッケージに分割済。新規ロジックは適切なモジュール（heightmap / mesh / stl / cli / ui_streamlit）に置く
 - 型ヒントは「読みやすくなる時だけ」入れる
 - コメントは「なぜ」を書く。何をしているかは識別子で表現する
 - ファイル末尾は改行で終わる
@@ -79,7 +79,7 @@ meshforge/
 ├─ pyproject.toml           パッケージ定義（Step 5 で追加）
 ├─ python/                  実装コード
 │   ├─ make_sample.py       動作確認用のサンプル PNG / PDF 生成
-│   └─ meshforge/           Step 5 でパッケージ化（heightmap / mesh / stl / cli）
+│   └─ meshforge/           Step 5 でパッケージ化（heightmap / mesh / stl / cli / ui_streamlit）
 ├─ samples/                 入力サンプル（PNG / PDF）。STL 出力は gitignore
 ├─ .codex/                  Codex CLI 設定（reviewer / explorer エージェント）
 ├─ .claude/commands/        Claude スラッシュコマンド

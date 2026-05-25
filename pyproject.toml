@@ -14,8 +14,10 @@ dependencies = [
 ]
 
 # PDF input goes through PyMuPDF. Optional so PNG-only setups stay slim.
+# Streamlit UI (Step 6) is also optional — the core CLI stays usable without it.
 [project.optional-dependencies]
 pdf = ["PyMuPDF"]
+ui = ["streamlit"]
 
 [tool.setuptools.packages.find]
 where = ["python"]
