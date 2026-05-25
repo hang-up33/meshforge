@@ -46,7 +46,7 @@ meshforge は「PDF（仕様書 / 図面）→ 編集可能な 3D モデル → 
 ## 環境
 
 - Python 3.14 + venv (`.venv/`)
-- 依存: `numpy`, `pillow`, `trimesh`（必要に応じて `PyMuPDF` を Step 3 で追加）
+- 依存: `numpy`, `pillow`, `trimesh`, `PyMuPDF`（Step 3 以降は PyMuPDF も必須）
 - 実行例: `.venv/bin/python python/heightmap_to_stl.py samples/dome.png samples/dome.stl`
 - macOS / Homebrew Python では `pyexpat` の symbol 不一致があり、`brew install expat` 済みなら pip 用に `DYLD_LIBRARY_PATH=/opt/homebrew/opt/expat/lib` を渡す。**スクリプト実行には不要**。
 

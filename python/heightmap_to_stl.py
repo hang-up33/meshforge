@@ -1,4 +1,4 @@
-"""PNG -> binary STL via simple heightmap extrusion (meshforge Step 1-2)."""
+"""PNG/PDF -> binary STL via simple heightmap extrusion (meshforge Step 1-3)."""
 
 import argparse
 import sys
@@ -59,8 +59,27 @@ def heightmap_to_mesh(heights: np.ndarray) -> trimesh.Trimesh:
     return trimesh.Trimesh(vertices=verts, faces=faces, process=True)
 
 
+def rasterize_pdf(path: str, dpi: float) -> Image.Image:
+    # PyMuPDF is only required for PDF input; importing lazily keeps PNG-only
+    # users (and Step 1/2 environments) from needing it installed.
+    import fitz  # PyMuPDF
+    with fitz.open(path) as doc:
+        if doc.page_count == 0:
+            raise ValueError(f"{path} has no pages")
+        page = doc.load_page(0)
+        zoom = dpi / 72.0  # PyMuPDF's base resolution is 72 DPI
+        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False, colorspace=fitz.csGRAY)
+        return Image.frombytes("L", (pix.width, pix.height), pix.samples)
+
+
+def load_grayscale(path: str, dpi: float) -> Image.Image:
+    if path.lower().endswith(".pdf"):
+        return rasterize_pdf(path, dpi)
+    return Image.open(path).convert("L")
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="PNG -> binary STL heightmap.")
+    p = argparse.ArgumentParser(description="PNG/PDF -> binary STL heightmap.")
     p.add_argument("input")
     p.add_argument("output")
     # Floor plans usually have dark walls on a light background; inverting makes
@@ -79,6 +98,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         metavar="N",
         help="binarize at this 0..255 value (>= N -> max height, else flat)",
     )
+    p.add_argument(
+        "--dpi",
+        type=float,
+        default=150.0,
+        metavar="D",
+        help="rasterize PDF input at this DPI (ignored for PNG); default 150",
+    )
     return p.parse_args(argv)
 
 
@@ -87,7 +113,12 @@ def main() -> int:
     if args.threshold is not None and not 0 <= args.threshold <= 255:
         print("--threshold must be in 0..255", file=sys.stderr)
         return 1
-    arr = np.array(Image.open(args.input).convert("L"), dtype=np.float32)
+    # --dpi is documented as "ignored for PNG"; only validate it when it will
+    # actually be used so PNG callers can pass a shared (possibly bogus) value.
+    if args.input.lower().endswith(".pdf") and args.dpi <= 0:
+        print("--dpi must be positive", file=sys.stderr)
+        return 1
+    arr = np.array(load_grayscale(args.input, args.dpi), dtype=np.float32)
     if args.invert:
         arr = 255.0 - arr
     if args.threshold is not None:
