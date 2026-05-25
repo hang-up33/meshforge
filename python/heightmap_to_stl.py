@@ -21,6 +21,34 @@ DEFAULTS = {
 
 SETTINGS_KEYS = ["input", "output", *DEFAULTS]
 
+# JSON 由来の値はそのまま numeric 比較に流すと "128" のような文字列で
+# TypeError になり、利用者から見ると原因不明のトレースバックになる。
+# resolve_settings で先に型を弾けば validate() の前で config error として
+# 返せる。bool は int の subclass なので、数値型キーに true/false が来た
+# 場合と、boolean キーに 0/1 が来た場合の両方を別扱いしたい。
+JSON_TYPES = {
+    "input": "string",
+    "output": "string",
+    "invert": "boolean",
+    "threshold": "integer or null",
+    "dpi": "number",
+    "pixel_mm": "number",
+    "max_height_mm": "number",
+    "base_mm": "number",
+}
+
+
+def _matches_json_type(value, kind: str) -> bool:
+    if kind == "string":
+        return isinstance(value, str)
+    if kind == "boolean":
+        return isinstance(value, bool)
+    if kind == "integer or null":
+        return value is None or (isinstance(value, int) and not isinstance(value, bool))
+    if kind == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    raise AssertionError(f"unknown json type kind: {kind!r}")
+
 
 def heightmap_to_mesh(heights: np.ndarray, pixel_mm: float, base_mm: float) -> trimesh.Trimesh:
     # Treat each pixel as a pixel_mm × pixel_mm cell. Vertices sit at cell
@@ -171,6 +199,12 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         unknown = sorted(set(cfg) - set(SETTINGS_KEYS))
         if unknown:
             raise ValueError(f"{args.config}: unknown keys {unknown}")
+        for k, v in cfg.items():
+            kind = JSON_TYPES[k]
+            if not _matches_json_type(v, kind):
+                raise ValueError(
+                    f"{args.config}: {k!r} must be {kind}, got {type(v).__name__}"
+                )
         s.update(cfg)
     a = vars(args)
     # SUPPRESS means absent-from-namespace; positionals (input/output) are
