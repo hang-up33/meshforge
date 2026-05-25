@@ -29,10 +29,14 @@ allowed-tools:
    - コミットメッセージ例: `fix: address codex review (watertight check, off-by-one)`
    - 1 指摘 = 1 コミット を原則とするが、関連する小さな修正はまとめて可
 5. **コミット後**: `git push` し、PR コメントに「対応した指摘 / 保留した指摘 / 却下した指摘」のサマリを `gh pr comment` で投稿
+6. **再レビューをトリガ**: 続けて PR に `@codex review` を含むコメントを `gh pr comment` で投稿し、Codex Cloud に再レビューさせる
+   - サマリと同じコメントに `@codex review` を含めても良い（1 コメントで済む）
+   - ローカルで再確認したい場合は代わりに `/codex-review` を実行
+   - Codex の応答が来たらまた本コマンドでループ
 
 ## 重要
 
 - レビュアが Codex でも GitHub コメントでも、**Claude は全部鵜呑みにしない**
 - 段階性ルール（AGENTS.md）に反する指摘は明示的に却下し、PR コメントで理由を返す
 - 同じブランチに追加コミット（force push は使わない）
-- 修正後はもう一度 `/codex-review` で確認 → ループ
+- 修正 push 後は必ず再レビューを回す（`@codex review` コメント or `/codex-review`）→ 指摘が無くなるまでループ
