@@ -53,13 +53,28 @@
 - **成果**: UI から呼びやすい構造になる (後で Avalonia から呼べる土台)
 - **完了条件**: 既存機能がリグレッションなくパッケージ経由で動く
 
-### Step 6: 簡単な GUI (この時点で Avalonia を入れるか再判断)
-- ここまで動いてから、UI 層を載せるかどうかを **改めて判断**
-- 候補:
-  - (A) 設計書通り Avalonia + C# で UI を作る
-  - (B) Python だけで完結させたい場合は Tkinter / PySimpleGUI / Streamlit で簡易 UI
-- 判断材料: ここまでの開発感触、Mac での Avalonia セットアップの手間、配布形態の希望
-- **このステップは Step 5 完了後に改めて計画を立て直す**
+### Step 6: 簡易 GUI を Streamlit で載せる
+- **判断 (Step 5 完了後の再計画結果)**: まず Streamlit でブラウザ UI を載せる。
+  Avalonia + C# は将来のリプレース候補として残し、Step 6 では着手しない。
+  - 理由: コアは Step 5 で `python -m meshforge convert` の Python パッケージに
+    なっているため、UI 層だけ Streamlit で被せれば「動く成果物」が最速で得られる。
+    C# 移行時はコアをそのまま subprocess 経由で叩く形に切り替えれば良い。
+- **作るもの**: `python/meshforge/ui_streamlit.py` 1 ファイル
+- **やること**:
+  - PNG / PDF をブラウザからアップロード
+  - `--invert` / `--threshold` / `--dpi` / `--pixel-mm` / `--max-height-mm` /
+    `--base-mm` をフォームで調整
+  - 「変換」ボタンで STL を生成し、ブラウザからダウンロード可能にする
+  - 同じ入力・同じパラメータで CLI と バイト一致する STL を返す
+- **使うライブラリ**: `streamlit` (新規依存、`pyproject.toml` の `ui` extra)
+- **起動**: `.venv/bin/streamlit run python/meshforge/ui_streamlit.py`
+- **やらないこと**:
+  - Avalonia / C# 移行（将来 Step として保留）
+  - STL の 3D プレビュー（Step 7 構想に回す）
+  - 複数ファイル一括変換 / 複数ページ PDF
+  - 認証 / マルチユーザー（ローカル単体起動前提）
+- **完了条件**: ブラウザから PNG/PDF を入れて STL をダウンロードでき、CLI と
+  同じ入力・同じパラメータでバイト一致する
 
 ### Step 7 以降 (構想のみ、ここでは確定しない)
 - 3D プレビュー
@@ -78,7 +93,7 @@
 | Step 3 | JSON・UI・複数ページ・パッケージ化 |
 | Step 4 | UI・パッケージ化・複数入力 |
 | Step 5 | UI・3Dプレビュー・エラー処理凝り |
-| Step 6 | (要再計画) |
+| Step 6 | Avalonia/C# 移行・3D プレビュー・複数入力・複数ページ PDF・認証 |
 
 ## 着手判断
 

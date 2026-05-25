@@ -8,6 +8,12 @@ def write_stl(mesh: trimesh.Trimesh, path: str) -> None:
     mesh.export(path)
 
 
+def serialize(mesh: trimesh.Trimesh) -> bytes:
+    # In-memory binary STL bytes, for callers that need to stream the output
+    # (e.g. the Streamlit UI's download button) without touching the disk.
+    return mesh.export(file_type="stl")
+
+
 def summary(mesh: trimesh.Trimesh, path: str) -> str:
     return (
         f"wrote {path}  "
