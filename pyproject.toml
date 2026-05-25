@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meshforge"
+version = "0.1.0"
+description = "PNG/PDF -> binary STL heightmap converter"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "pillow",
+    "trimesh",
+]
+
+# PDF input goes through PyMuPDF. Optional so PNG-only setups stay slim.
+[project.optional-dependencies]
+pdf = ["PyMuPDF"]
+
+[tool.setuptools.packages.find]
+where = ["python"]
