@@ -125,11 +125,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     # of --config without clobbering JSON values with argparse fallbacks.
     p.add_argument("input", nargs="?", default=None)
     p.add_argument("output", nargs="?", default=None)
+    # BooleanOptionalAction で --no-invert を生やしておかないと、JSON で
+    # "invert": true を入れた利用者が CLI 一発で無効化する手段がなくなり、
+    # --config と --invert の優先順位ルール（CLI 勝ち）が片方向にしか
+    # 機能しなくなる。
     p.add_argument(
         "--invert",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=argparse.SUPPRESS,
-        help="invert brightness so dark pixels become tall (e.g. floor-plan walls)",
+        help="invert brightness so dark pixels become tall (e.g. floor-plan walls); "
+             "use --no-invert to override a JSON config that enabled it",
     )
     p.add_argument(
         "--threshold",
