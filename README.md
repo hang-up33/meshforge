@@ -67,7 +67,7 @@ Step 7 以降（3D プレビュー / 複数入力 / エラー処理強化 / OSS 
 | --- | --- | --- |
 | 1 | 最小スクリプト「PNG → STL」 | ✅ 完了（`python/heightmap_to_stl.py`） |
 | 2 | `--invert` / `--threshold` 追加 | ✅ 完了（建築ジオラマ用） |
-| 3 | PDF 入力対応 | ⬜ 未着手 |
+| 3 | PDF 入力対応 | ✅ 完了（PyMuPDF で 1 ページ目をラスタライズ） |
 | 4 | 設定の JSON 化 | ⬜ 未着手 |
 | 5 | Python パッケージ化 | ⬜ 未着手 |
 | 6 | GUI（再計画） | ⬜ 未着手 |
@@ -117,6 +117,21 @@ meshforge/
 # 壁が立ち上がる STL を出す
 .venv/bin/python python/heightmap_to_stl.py samples/floorplan.png samples/floorplan.stl \
     --invert --threshold 128
+```
+
+### Step 3（実装済み）
+
+入力ファイルの拡張子が `.pdf` の場合は PyMuPDF で 1 ページ目を
+ラスタライズしてから既存の処理に流す。`--dpi` でラスタライズ解像度を
+指定できる（既定 150 DPI、PNG 入力では無視）。
+
+```sh
+# サンプル平面図 PDF を作る（PyMuPDF が必要）
+.venv/bin/python python/make_sample.py samples/floorplan.pdf floorplan
+
+# PDF -> STL（壁押出ジオラマ）
+.venv/bin/python python/heightmap_to_stl.py samples/floorplan.pdf samples/floorplan.stl \
+    --invert --threshold 128 --dpi 150
 ```
 
 ### Step 5（予定）
