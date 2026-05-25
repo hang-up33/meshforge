@@ -113,7 +113,9 @@ def main() -> int:
     if args.threshold is not None and not 0 <= args.threshold <= 255:
         print("--threshold must be in 0..255", file=sys.stderr)
         return 1
-    if args.dpi <= 0:
+    # --dpi is documented as "ignored for PNG"; only validate it when it will
+    # actually be used so PNG callers can pass a shared (possibly bogus) value.
+    if args.input.lower().endswith(".pdf") and args.dpi <= 0:
         print("--dpi must be positive", file=sys.stderr)
         return 1
     arr = np.array(load_grayscale(args.input, args.dpi), dtype=np.float32)
