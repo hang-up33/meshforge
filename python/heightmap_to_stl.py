@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import math
 import sys
 
 import numpy as np
@@ -222,14 +223,16 @@ def validate(s: dict) -> str | None:
     t = s["threshold"]
     if t is not None and not 0 <= t <= 255:
         return "threshold must be in 0..255"
-    if s["input"].lower().endswith(".pdf") and s["dpi"] <= 0:
-        return "dpi must be positive"
-    if s["pixel_mm"] <= 0:
-        return "pixel_mm must be positive"
-    if s["max_height_mm"] <= 0:
-        return "max_height_mm must be positive"
-    if s["base_mm"] <= 0:
-        return "base_mm must be positive"
+    # NaN / inf すり抜け防止: `nan > 0` も `nan <= 0` も False になるので
+    # 単純な ">0" だけだと validate を素通りして NaN 座標のメッシュが
+    # できる。json.load や float() は NaN/Infinity を受理するため
+    # 数値キーは isfinite で先に弾く。
+    pdf_input = s["input"].lower().endswith(".pdf")
+    finite_positive = ["pixel_mm", "max_height_mm", "base_mm"] + (["dpi"] if pdf_input else [])
+    for k in finite_positive:
+        v = s[k]
+        if not math.isfinite(v) or v <= 0:
+            return f"{k} must be a positive finite number"
     return None
 
 
