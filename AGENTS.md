@@ -46,17 +46,18 @@ meshforge は「PDF（仕様書 / 図面）→ 編集可能な 3D モデル → 
 ## 環境
 
 - Python 3.14 + venv (`.venv/`)
-- 依存: `numpy`, `pillow`, `trimesh`, `PyMuPDF`（Step 3 以降は PyMuPDF も必須）
-- 実行例: `.venv/bin/python python/heightmap_to_stl.py samples/dome.png samples/dome.stl`
-- macOS / Homebrew Python では `pyexpat` の symbol 不一致があり、`brew install expat` 済みなら pip 用に `DYLD_LIBRARY_PATH=/opt/homebrew/opt/expat/lib` を渡す。**スクリプト実行には不要**。
+- 依存: `numpy`, `pillow`, `trimesh`、PDF 入力用に `PyMuPDF`（`pip install -e '.[pdf]'`）
+- セットアップ: `.venv/bin/pip install -e .`（Step 5 で `pyproject.toml` 追加。`python -m meshforge` を解決するため必須）
+- 実行例: `.venv/bin/python -m meshforge convert samples/dome.png samples/dome.stl`
+- macOS / Homebrew Python では `pyexpat` の symbol 不一致があり、`brew install expat` 済みなら pip 用に `DYLD_LIBRARY_PATH=/opt/homebrew/opt/expat/lib` を渡す。**`python -m meshforge` の実行には不要**。
 
 ## コーディング規約
 
-- 1 ファイルで完結する Step では分割しない（Step 5 でパッケージ化）
+- Step 5 で `python/meshforge/` パッケージに分割済。新規ロジックは適切なモジュール（heightmap / mesh / stl / cli）に置く
 - 型ヒントは「読みやすくなる時だけ」入れる
 - コメントは「なぜ」を書く。何をしているかは識別子で表現する
 - ファイル末尾は改行で終わる
-- 公開関数のドキュストリングは 1 行で十分（Step 5 まで）
+- 公開関数のドキュストリングは 1 行で十分
 
 ## レビュー観点（Codex への期待）
 
@@ -75,9 +76,10 @@ meshforge/
 ├─ CLAUDE.md                Claude Code 向け薄いポインタ
 ├─ README.md                プロジェクト概要・進捗
 ├─ docs/development-plan.md ステップ計画（正本）
+├─ pyproject.toml           パッケージ定義（Step 5 で追加）
 ├─ python/                  実装コード
-│   ├─ heightmap_to_stl.py  Step 1〜4 はこの 1 ファイル
-│   └─ make_sample.py       動作確認用のサンプル PNG 生成
+│   ├─ make_sample.py       動作確認用のサンプル PNG / PDF 生成
+│   └─ meshforge/           Step 5 でパッケージ化（heightmap / mesh / stl / cli）
 ├─ samples/                 入力サンプル（PNG / PDF）。STL 出力は gitignore
 ├─ .codex/                  Codex CLI 設定（reviewer / explorer エージェント）
 ├─ .claude/commands/        Claude スラッシュコマンド

@@ -65,99 +65,101 @@ Step 7 以降（3D プレビュー / 複数入力 / エラー処理強化 / OSS 
 
 | # | タスク | 状態 |
 | --- | --- | --- |
-| 1 | 最小スクリプト「PNG → STL」 | ✅ 完了（`python/heightmap_to_stl.py`） |
+| 1 | 最小スクリプト「PNG → STL」 | ✅ 完了（Step 5 で `python/meshforge/` パッケージに統合） |
 | 2 | `--invert` / `--threshold` 追加 | ✅ 完了（建築ジオラマ用） |
 | 3 | PDF 入力対応 | ✅ 完了（PyMuPDF で 1 ページ目をラスタライズ） |
 | 4 | 設定の JSON 化 | ✅ 完了（`--config` / `--save-config`、ジオメトリ定数も JSON 化） |
-| 5 | Python パッケージ化 | ⬜ 未着手 |
+| 5 | Python パッケージ化 | ✅ 完了（`python -m meshforge convert ...`、heightmap/mesh/stl/cli に分離） |
 | 6 | GUI（再計画） | ⬜ 未着手 |
 
-## 想定フォルダ構成（段階的に育てる）
+## フォルダ構成
 
 ```
 meshforge/
 ├─ README.md
+├─ pyproject.toml              パッケージ定義（Step 5 で追加）
 ├─ docs/
 │   └─ development-plan.md     段階的計画（正）
 ├─ python/
-│   ├─ heightmap_to_stl.py     Step 1〜4 はこの 1 ファイル
-│   └─ meshforge/              Step 5 でパッケージ化
+│   ├─ make_sample.py          動作確認用サンプル PNG / PDF 生成
+│   └─ meshforge/              Step 5 でパッケージ化済
 │       ├─ __init__.py
-│       ├─ heightmap.py
-│       ├─ mesh.py
-│       ├─ stl.py
-│       └─ cli.py
+│       ├─ __main__.py         `python -m meshforge` のエントリ
+│       ├─ heightmap.py        PNG/PDF -> 高さ配列
+│       ├─ mesh.py             高さ配列 -> trimesh.Trimesh
+│       ├─ stl.py              バイナリ STL 出力
+│       └─ cli.py              argparse / --config 解決 / サブコマンド
 └─ samples/                    入力サンプル（PNG / PDF）
 ```
 
-現時点ではこの構成は **まだ存在しない**（README と `docs/` のみ）。Step 進行に合わせて育てる。
+## セットアップ
 
-## 使い方（Step 進行ごとに更新）
+Step 5 以降、`meshforge` は Python パッケージとして編集可能インストールで
+使う。venv の作成後、リポジトリ直下で:
 
-### Step 1（実装済み）
+```sh
+.venv/bin/pip install -e .          # PNG のみで使う場合
+.venv/bin/pip install -e '.[pdf]'   # PDF 入力 (PyMuPDF) も使う場合
+```
+
+## 使い方
+
+すべて `python -m meshforge convert ...` のサブコマンドで呼ぶ。
+
+### PNG → STL
 
 ```sh
 # サンプル PNG を作る
 .venv/bin/python python/make_sample.py samples/dome.png
 
 # PNG → STL
-.venv/bin/python python/heightmap_to_stl.py samples/dome.png samples/dome.stl
+.venv/bin/python -m meshforge convert samples/dome.png samples/dome.stl
 ```
 
-### Step 2（実装済み）
+### 建築平面図（黒い壁 / 白い床）
 
-建築平面図のように「黒線が壁、白が床」の画像から壁を立ち上げる場合は
 `--invert` で明暗を反転し、`--threshold` でアンチエイリアスを切って
 垂直な壁にする。
 
 ```sh
-# サンプル平面図を作る（黒い外壁＋仕切り＋ドア開口）
 .venv/bin/python python/make_sample.py samples/floorplan.png floorplan
 
-# 壁が立ち上がる STL を出す
-.venv/bin/python python/heightmap_to_stl.py samples/floorplan.png samples/floorplan.stl \
+.venv/bin/python -m meshforge convert samples/floorplan.png samples/floorplan.stl \
     --invert --threshold 128
 ```
 
-### Step 3（実装済み）
+### PDF 入力
 
 入力ファイルの拡張子が `.pdf` の場合は PyMuPDF で 1 ページ目を
-ラスタライズしてから既存の処理に流す。`--dpi` でラスタライズ解像度を
+ラスタライズしてから処理に流す（要 `[pdf]` extra）。`--dpi` で解像度を
 指定できる（既定 150 DPI、PNG 入力では無視）。
 
 ```sh
-# サンプル平面図 PDF を作る（PyMuPDF が必要）
 .venv/bin/python python/make_sample.py samples/floorplan.pdf floorplan
 
-# PDF -> STL（壁押出ジオラマ）
-.venv/bin/python python/heightmap_to_stl.py samples/floorplan.pdf samples/floorplan.stl \
+.venv/bin/python -m meshforge convert samples/floorplan.pdf samples/floorplan.stl \
     --invert --threshold 128 --dpi 150
 ```
 
-### Step 4（実装済み）
+### JSON 設定で再現
 
 CLI 引数の代わりに JSON で全パラメータを指定できる。`pixel_mm` /
 `max_height_mm` / `base_mm` などジオメトリ定数も JSON で上書き可能なので、
-「同じ JSON から同じ STL が再現できる」状態がここで成立する。
+「同じ JSON から同じ STL が再現できる」。
 
 ```sh
 # 1. CLI で 1 回出力しつつ、その時の設定を JSON に保存
-.venv/bin/python python/heightmap_to_stl.py samples/floorplan.pdf samples/floorplan.stl \
+.venv/bin/python -m meshforge convert samples/floorplan.pdf samples/floorplan.stl \
     --invert --threshold 128 --dpi 150 --save-config samples/floorplan.json
 
 # 2. 以降は JSON 1 枚で同じ STL を再生成できる
-.venv/bin/python python/heightmap_to_stl.py --config samples/floorplan.json
+.venv/bin/python -m meshforge convert --config samples/floorplan.json
 ```
 
-`--config` と CLI 引数を混ぜた場合は CLI 側が勝つ。`--config` 利用時の
-positional は「両方指定するか両方省略」のどちらか（片方だけだと
+`--config` と CLI 引数を混ぜた場合は CLI 側が勝つ（`--invert` を JSON で
+`true` にしている場合に CLI から無効化するには `--no-invert`）。`--config`
+利用時の positional は「両方指定するか両方省略」のどちらか（片方だけだと
 `input`/`output` のどちらを上書きしたいか曖昧になるためエラー）。
-
-### Step 5（予定）
-
-```sh
-python -m meshforge convert config.json
-```
 
 ## 進め方ルール
 

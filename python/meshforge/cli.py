@@ -1,13 +1,13 @@
-"""PNG/PDF -> binary STL via simple heightmap extrusion (meshforge Step 1-4)."""
+"""CLI surface: argparse subcommands, --config merging, validation."""
 
 import argparse
 import json
 import math
 import sys
 
-import numpy as np
-import trimesh
-from PIL import Image
+from meshforge.heightmap import load_grayscale, to_heights
+from meshforge.mesh import heightmap_to_mesh
+from meshforge.stl import summary, write_stl
 
 # Defaults for the 3D extrusion. Geometry constants live here so they can be
 # overridden via --config JSON (Step 4) without editing the script.
@@ -51,106 +51,39 @@ def _matches_json_type(value, kind: str) -> bool:
     raise AssertionError(f"unknown json type kind: {kind!r}")
 
 
-def heightmap_to_mesh(heights: np.ndarray, pixel_mm: float, base_mm: float) -> trimesh.Trimesh:
-    # Treat each pixel as a pixel_mm × pixel_mm cell. Vertices sit at cell
-    # corners, so a W×H pixel image becomes a mesh spanning exactly
-    # W*pixel_mm × H*pixel_mm (e.g. 64 px @ 0.5 mm/px -> 32.0 mm, not 31.5).
-    # Corner heights are the 2x2 average of the (edge-padded) pixel grid,
-    # which also makes a 1×1 input a single valid cell instead of a
-    # degenerate wall-only mesh.
-    if heights.ndim != 2 or heights.size == 0:
-        raise ValueError(f"heights must be a non-empty 2D array, got shape={heights.shape}")
-    # Promote before the 2x2 sum so a uint8 input (e.g. raw PIL array passed
-    # straight to this function) doesn't overflow into garbage heights.
-    heights = np.asarray(heights, dtype=np.float64)
-    padded = np.pad(heights, 1, mode="edge")
-    corners = (padded[:-1, :-1] + padded[:-1, 1:] + padded[1:, :-1] + padded[1:, 1:]) / 4.0
-    h, w = corners.shape  # (H+1, W+1)
-    xs = np.arange(w) * pixel_mm
-    ys = np.arange(h) * pixel_mm
-    xx, yy = np.meshgrid(xs, ys)
-    z_top = corners + base_mm
-    z_bot = np.zeros_like(z_top)
-    top = np.stack([xx, yy, z_top], axis=-1).reshape(-1, 3)
-    bot = np.stack([xx, yy, z_bot], axis=-1).reshape(-1, 3)
-    n = h * w
-    verts = np.vstack([top, bot])
-
-    ii, jj = np.meshgrid(np.arange(h - 1), np.arange(w - 1), indexing="ij")
-    tl = (ii * w + jj).ravel()
-    tr = tl + 1
-    bl = tl + w
-    br = bl + 1
-    top_f = np.column_stack([tl, tr, br, tl, br, bl]).reshape(-1, 3)
-    bot_f = np.column_stack([n + tl, n + br, n + tr, n + tl, n + bl, n + br]).reshape(-1, 3)
-
-    def wall(top_idx, bot_idx):
-        t0, t1 = top_idx[:-1], top_idx[1:]
-        b0, b1 = bot_idx[:-1], bot_idx[1:]
-        return np.column_stack([t0, t1, b1, t0, b1, b0]).reshape(-1, 3)
-
-    south = wall(np.arange(0, w)[::-1], np.arange(n, n + w)[::-1])
-    north = wall(np.arange((h - 1) * w, h * w), np.arange(n + (h - 1) * w, 2 * n))
-    west = wall(np.arange(h) * w, n + np.arange(h) * w)
-    east = wall((np.arange(h) * w + (w - 1))[::-1], (n + np.arange(h) * w + (w - 1))[::-1])
-
-    faces = np.vstack([top_f, bot_f, south, north, west, east])
-    return trimesh.Trimesh(vertices=verts, faces=faces, process=True)
-
-
-def rasterize_pdf(path: str, dpi: float) -> Image.Image:
-    # PyMuPDF is only required for PDF input; importing lazily keeps PNG-only
-    # users (and Step 1/2 environments) from needing it installed.
-    import fitz  # PyMuPDF
-    with fitz.open(path) as doc:
-        if doc.page_count == 0:
-            raise ValueError(f"{path} has no pages")
-        page = doc.load_page(0)
-        zoom = dpi / 72.0  # PyMuPDF's base resolution is 72 DPI
-        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False, colorspace=fitz.csGRAY)
-        return Image.frombytes("L", (pix.width, pix.height), pix.samples)
-
-
-def load_grayscale(path: str, dpi: float) -> Image.Image:
-    if path.lower().endswith(".pdf"):
-        return rasterize_pdf(path, dpi)
-    return Image.open(path).convert("L")
-
-
-def parse_args(argv: list[str]) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="PNG/PDF -> binary STL heightmap.")
+def _add_convert_args(c: argparse.ArgumentParser) -> None:
     # Positionals are optional so they can come from --config instead. argparse
     # SUPPRESS keeps unset flags out of the namespace, so we can tell which
     # values the user actually typed vs. defaults — needed to merge CLI on top
     # of --config without clobbering JSON values with argparse fallbacks.
-    p.add_argument("input", nargs="?", default=None)
-    p.add_argument("output", nargs="?", default=None)
+    c.add_argument("input", nargs="?", default=None)
+    c.add_argument("output", nargs="?", default=None)
     # BooleanOptionalAction で --no-invert を生やしておかないと、JSON で
     # "invert": true を入れた利用者が CLI 一発で無効化する手段がなくなり、
     # --config と --invert の優先順位ルール（CLI 勝ち）が片方向にしか
     # 機能しなくなる。
-    p.add_argument(
+    c.add_argument(
         "--invert",
         action=argparse.BooleanOptionalAction,
         default=argparse.SUPPRESS,
         help="invert brightness so dark pixels become tall (e.g. floor-plan walls); "
              "use --no-invert to override a JSON config that enabled it",
     )
-    p.add_argument(
+    c.add_argument(
         "--threshold",
         type=int,
         default=argparse.SUPPRESS,
         metavar="N",
         help="binarize at this 0..255 value (>= N -> max height, else flat)",
     )
-    p.add_argument(
+    c.add_argument(
         "--dpi",
         type=float,
         default=argparse.SUPPRESS,
         metavar="D",
         help="rasterize PDF input at this DPI (ignored for PNG); default 150",
     )
-    p.add_argument(
+    c.add_argument(
         "--pixel-mm",
         dest="pixel_mm",
         type=float,
@@ -158,7 +91,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         metavar="V",
         help="cell size in mm per input pixel; default 0.5",
     )
-    p.add_argument(
+    c.add_argument(
         "--max-height-mm",
         dest="max_height_mm",
         type=float,
@@ -166,7 +99,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         metavar="V",
         help="height in mm for brightness 255; default 10.0",
     )
-    p.add_argument(
+    c.add_argument(
         "--base-mm",
         dest="base_mm",
         type=float,
@@ -174,25 +107,36 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         metavar="V",
         help="solid base thickness in mm; default 1.0",
     )
-    p.add_argument(
+    c.add_argument(
         "--config",
         default=None,
         metavar="FILE",
         help="read settings from JSON (CLI args still win over JSON values)",
     )
-    p.add_argument(
+    c.add_argument(
         "--save-config",
         dest="save_config",
         default=None,
         metavar="FILE",
         help="write the effective settings to JSON after producing the STL",
     )
-    return p.parse_args(argv)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="meshforge",
+        description="PNG/PDF -> binary STL heightmap.",
+    )
+    sub = p.add_subparsers(dest="cmd", required=True, metavar="COMMAND")
+    convert = sub.add_parser("convert", help="convert a PNG/PDF heightmap to binary STL")
+    _add_convert_args(convert)
+    convert.set_defaults(handler=cmd_convert)
+    return p
 
 
 def resolve_settings(args: argparse.Namespace) -> dict:
     # With --config, exactly one positional is ambiguous (argparse always
-    # binds the first to `input`, so `script.py out.stl --config c.json`
+    # binds the first to `input`, so `meshforge convert out.stl --config c.json`
     # silently overrides input instead of output).
     if args.config and (args.input is None) != (args.output is None):
         raise ValueError("with --config, pass both positional input and output, or neither")
@@ -248,8 +192,7 @@ def save_config(path: str, settings: dict) -> None:
         f.write("\n")
 
 
-def main() -> int:
-    args = parse_args(sys.argv[1:])
+def cmd_convert(args: argparse.Namespace) -> int:
     try:
         settings = resolve_settings(args)
     except (OSError, ValueError, json.JSONDecodeError) as e:
@@ -260,24 +203,26 @@ def main() -> int:
         print(err, file=sys.stderr)
         return 1
 
-    arr = np.array(load_grayscale(settings["input"], settings["dpi"]), dtype=np.float32)
-    if settings["invert"]:
-        arr = 255.0 - arr
-    if settings["threshold"] is not None:
-        arr = np.where(arr >= settings["threshold"], 255.0, 0.0)
-    heights = arr / 255.0 * settings["max_height_mm"]
-    mesh = heightmap_to_mesh(heights, settings["pixel_mm"], settings["base_mm"])
-    mesh.export(settings["output"])
-    print(
-        f"wrote {settings['output']}  "
-        f"verts={len(mesh.vertices)}  faces={len(mesh.faces)}  "
-        f"watertight={mesh.is_watertight}"
+    image = load_grayscale(settings["input"], settings["dpi"])
+    heights = to_heights(
+        image,
+        invert=settings["invert"],
+        threshold=settings["threshold"],
+        max_height_mm=settings["max_height_mm"],
     )
+    mesh = heightmap_to_mesh(
+        heights,
+        pixel_mm=settings["pixel_mm"],
+        base_mm=settings["base_mm"],
+    )
+    write_stl(mesh, settings["output"])
+    print(summary(mesh, settings["output"]))
     if args.save_config:
         save_config(args.save_config, settings)
         print(f"wrote {args.save_config}")
     return 0
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    return args.handler(args)
