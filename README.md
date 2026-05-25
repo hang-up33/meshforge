@@ -68,7 +68,7 @@ Step 7 以降（3D プレビュー / 複数入力 / エラー処理強化 / OSS 
 | 1 | 最小スクリプト「PNG → STL」 | ✅ 完了（`python/heightmap_to_stl.py`） |
 | 2 | `--invert` / `--threshold` 追加 | ✅ 完了（建築ジオラマ用） |
 | 3 | PDF 入力対応 | ✅ 完了（PyMuPDF で 1 ページ目をラスタライズ） |
-| 4 | 設定の JSON 化 | ⬜ 未着手 |
+| 4 | 設定の JSON 化 | ✅ 完了（`--config` / `--save-config`、ジオメトリ定数も JSON 化） |
 | 5 | Python パッケージ化 | ⬜ 未着手 |
 | 6 | GUI（再計画） | ⬜ 未着手 |
 
@@ -133,6 +133,25 @@ meshforge/
 .venv/bin/python python/heightmap_to_stl.py samples/floorplan.pdf samples/floorplan.stl \
     --invert --threshold 128 --dpi 150
 ```
+
+### Step 4（実装済み）
+
+CLI 引数の代わりに JSON で全パラメータを指定できる。`pixel_mm` /
+`max_height_mm` / `base_mm` などジオメトリ定数も JSON で上書き可能なので、
+「同じ JSON から同じ STL が再現できる」状態がここで成立する。
+
+```sh
+# 1. CLI で 1 回出力しつつ、その時の設定を JSON に保存
+.venv/bin/python python/heightmap_to_stl.py samples/floorplan.pdf samples/floorplan.stl \
+    --invert --threshold 128 --dpi 150 --save-config samples/floorplan.json
+
+# 2. 以降は JSON 1 枚で同じ STL を再生成できる
+.venv/bin/python python/heightmap_to_stl.py --config samples/floorplan.json
+```
+
+`--config` と CLI 引数を混ぜた場合は CLI 側が勝つ。`--config` 利用時の
+positional は「両方指定するか両方省略」のどちらか（片方だけだと
+`input`/`output` のどちらを上書きしたいか曖昧になるためエラー）。
 
 ### Step 5（予定）
 
