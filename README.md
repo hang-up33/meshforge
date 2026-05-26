@@ -71,6 +71,7 @@ Step 7 以降（3D プレビュー / 複数入力 / エラー処理強化 / OSS 
 | 4 | 設定の JSON 化 | ✅ 完了（`--config` / `--save-config`、ジオメトリ定数も JSON 化） |
 | 5 | Python パッケージ化 | ✅ 完了（`python -m meshforge convert ...`、heightmap/mesh/stl/cli に分離） |
 | 6 | GUI（Streamlit 簡易 UI） | ✅ 完了（`streamlit run python/meshforge/ui_streamlit.py`、C# 移行は将来） |
+| 7 | 3D プレビュー（streamlit-stl） | ✅ 完了（Convert 後にブラウザで STL を回転 / ズーム可能） |
 
 ## フォルダ構成
 
@@ -172,7 +173,9 @@ CLI 引数の代わりに JSON で全パラメータを指定できる。`pixel_
 ```
 
 ブラウザに UI が開き、PNG / PDF をアップロード → パラメータをフォームで
-調整 → 「Convert」で STL を生成しダウンロードできる。内部で呼ぶ変換
+調整 → 「Convert」で STL を生成しダウンロードできる。Convert 後は
+`streamlit-stl` による 3D プレビュー（Step 7、three.js ベース）が表示され、
+ブラウザ上で回転 / ズームしながら妥当性を確認できる。内部で呼ぶ変換
 パイプラインは CLI と同一なので、同じ入力・同じパラメータの STL は
 バイト一致する。
 
@@ -247,7 +250,8 @@ UI 層と `requirements.txt` だけ。
 | Step 3 | JSON・UI・複数ページ・パッケージ化 |
 | Step 4 | UI・パッケージ化・複数入力 |
 | Step 5 | UI・3D プレビュー・エラー処理凝り |
-| Step 6 | （要再計画） |
+| Step 6 | Avalonia/C# 移行・3D プレビュー・複数入力・複数ページ PDF・認証 |
+| Step 7 | プレビュー上の編集操作・複数ビュー・サーバ側レンダリング |
 
 ## 環境メモ
 

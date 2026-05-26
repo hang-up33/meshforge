@@ -76,9 +76,25 @@
 - **完了条件**: ブラウザから PNG/PDF を入れて STL をダウンロードでき、CLI と
   同じ入力・同じパラメータでバイト一致する
 
-### Step 7 以降 (構想のみ、ここでは確定しない)
-- 3D プレビュー
-- 複数入力対応
+### Step 7: STL の 3D プレビューを Streamlit UI に組み込む
+- **判断**: Step 6 の Streamlit UI に「Convert したらその場で 3D で確認できる」
+  プレビューを足す。ダウンロード前に妥当性を目視確認できると、特に
+  「invert / threshold が想定通りに当たっているか」を試行錯誤しやすい。
+- **作るもの**: `python/meshforge/ui_streamlit.py` の Convert 結果表示に
+  `streamlit-stl` の `stl_from_text` を 1 ブロック追加するだけ。
+- **使うライブラリ**: `streamlit-stl`（three.js ベース、軽量。`ui` extra に追加）
+- **やること**:
+  - Convert 成功後に `st.subheader("3D preview")` の下に `stl_from_text(stl_bytes, ...)`
+    を呼ぶ。color / material / opacity / height だけ控えめに設定
+  - ダウンロードボタンはそのまま残す（プレビュー → 良ければダウンロード の流れ）
+- **やらないこと**:
+  - プレビュー上でのマウス編集（頂点を動かす等）— 編集は別 Step
+  - 複数ビュー / カメラプリセット
+  - サーバ側レンダリング（あくまでブラウザの three.js）
+- **完了条件**: Convert 後にブラウザに STL が 3D 表示され、回転 / ズームできる
+
+### Step 8 以降 (構想のみ、ここでは確定しない)
+- 複数入力対応（複数ページ PDF / 複数 PNG）
 - エラー処理強化
 - OSS リリース整備
 
@@ -94,6 +110,7 @@
 | Step 4 | UI・パッケージ化・複数入力 |
 | Step 5 | UI・3Dプレビュー・エラー処理凝り |
 | Step 6 | Avalonia/C# 移行・3D プレビュー・複数入力・複数ページ PDF・認証 |
+| Step 7 | プレビュー上の編集操作・複数ビュー・サーバ側レンダリング |
 
 ## 着手判断
 
