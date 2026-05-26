@@ -93,7 +93,29 @@
   - サーバ側レンダリング（あくまでブラウザの three.js）
 - **完了条件**: Convert 後にブラウザに STL が 3D 表示され、回転 / ズームできる
 
-### Step 8 以降 (構想のみ、ここでは確定しない)
+### Step 8: パラメータプリセットを UI に追加
+- **判断**: Convert ごとに invert / threshold / max_height_mm / base_mm を
+  ゼロから合わせ込む UX が辛いため、想定入力ごとのプリセットを用意して
+  「選ぶ→微調整」できるようにする。
+- **作るもの**: `ui_streamlit.py` の Convert フォーム上に `st.selectbox`
+  のプリセット選択を 1 つ追加。`st.session_state` 経由で form 内 widget の
+  値を上書きする。
+- **プリセット**:
+  - Custom (manual): 何もしない（現在のフォーム値を維持）
+  - Floor plan (dark walls on light background): `invert=True`,
+    `use_threshold=True`, `threshold=128`, `max_height_mm=10.0`, `base_mm=1.0`
+  - Logo / Text (light on dark): `invert=False`, `use_threshold=True`,
+    `threshold=128`, `max_height_mm=5.0`, `base_mm=2.0`
+  - Terrain / Depth map (grayscale gradient): `invert=False`,
+    `use_threshold=False`, `max_height_mm=15.0`, `base_mm=1.0`
+- **やらないこと**:
+  - プリセット追加 UI（プリセットはコード固定、保存先 JSON 等は持たない）
+  - `pixel_mm` / `dpi` のプリセット化（入力タイプによる差が小さいため固定）
+  - CLI 側へのプリセット展開（CLI は引き続き `--config` JSON で再現する）
+- **完了条件**: プリセットを切り替えると form の widget 値が連動して変わり、
+  Convert ボタンで反映後の値が使われる
+
+### Step 9 以降 (構想のみ、ここでは確定しない)
 - 複数入力対応（複数ページ PDF / 複数 PNG）
 - エラー処理強化
 - OSS リリース整備
@@ -111,6 +133,7 @@
 | Step 5 | UI・3Dプレビュー・エラー処理凝り |
 | Step 6 | Avalonia/C# 移行・3D プレビュー・複数入力・複数ページ PDF・認証 |
 | Step 7 | プレビュー上の編集操作・複数ビュー・サーバ側レンダリング |
+| Step 8 | プリセット追加 UI・JSON 保存・`pixel_mm`/`dpi` のプリセット化・CLI 展開 |
 
 ## 着手判断
 
