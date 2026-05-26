@@ -179,6 +179,34 @@ CLI 引数の代わりに JSON で全パラメータを指定できる。`pixel_
 Avalonia + C# への移行は将来の Step として保留（CLI を subprocess で
 叩く構造に切り替えるだけでコア再利用可能）。
 
+### 公開（Streamlit Community Cloud）
+
+GitHub push で自動再デプロイされる、Streamlit 公式の無料ホスティング。
+「Vercel 体験 + Streamlit 対応」を満たすので公開先として採用。
+
+セットアップ手順:
+
+1. https://share.streamlit.io にアクセスして GitHub でログイン
+2. 「New app」→ 以下を指定:
+   - Repository: `hang-up33/meshforge`
+   - Branch: `main`
+   - Main file path: `python/meshforge/ui_streamlit.py`
+3. Deploy
+
+`requirements.txt` がリポジトリ直下にあり、`.[pdf,ui]` を 1 行で参照
+することで `pyproject.toml` 経由でコア + PDF + UI の依存をまとめて
+インストールする。
+
+制約:
+
+- 7 日間アクセスがないと app が sleep する（次回アクセス時に 20〜40 秒で再起動）
+- メモリ 1GB / 共有 CPU（meshforge の変換は数秒なので問題なし）
+- app は public（誰でも URL で到達可能）— OSS 公開の前提
+
+将来 Avalonia 移行や別ホスト（Hugging Face Spaces, Fly.io 等）に
+切り替える場合も、コアは Python パッケージのままなので影響範囲は
+UI 層と `requirements.txt` だけ。
+
 ## 進め方ルール
 
 - 1 ステップ完了（動作確認できた）→ コミット → 次ステップ

@@ -1,0 +1,4 @@
+# Streamlit Community Cloud reads this file. It installs meshforge from the
+# repo root (pyproject.toml) with the pdf + ui extras, which transitively pulls
+# numpy / pillow / trimesh / PyMuPDF / streamlit.
+.[pdf,ui]
