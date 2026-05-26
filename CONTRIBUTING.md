@@ -29,9 +29,20 @@ python -m venv .venv
 - `pdf` extra: PDF 入力（PyMuPDF）
 - `ui` extra: Streamlit ブラウザ UI と 3D プレビュー
 
-依存は [`pyproject.toml`](pyproject.toml) が単一の正本。`requirements.txt`
-は Streamlit Community Cloud のデプロイ用に `.[pdf,ui]` を読ませている
-だけで、ローカル開発では基本不要。
+ローカル開発の依存は [`pyproject.toml`](pyproject.toml) が正本。
+`requirements.txt` は Streamlit Community Cloud のデプロイ専用で、
+`numpy` / `pillow` / `trimesh` / `pymupdf` / `streamlit` / `streamlit-stl`
+を直接列挙している（uv が local path entry を reject し、`pyproject.toml`
+へフォールバックすると Poetry が `python/meshforge` の src layout を
+解決できないため）。
+
+**依存を追加するときは両方を更新する必要がある**:
+
+1. `pyproject.toml` の `dependencies` / `optional-dependencies` を編集
+2. `requirements.txt` にも同じパッケージ名を追記
+
+片方だけ更新すると、ローカルで動いても Streamlit Cloud 側で ImportError、
+あるいはその逆になる。
 
 ## 動作確認
 
