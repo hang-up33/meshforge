@@ -45,5 +45,11 @@
   `requirements.txt` から `.[pdf,ui]` extra を取り込む形でコア + PDF + UI
   を一括インストール。
 
-[Unreleased]: https://github.com/hang-up33/meshforge/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/hang-up33/meshforge/releases/tag/v0.1.0
+<!--
+リンクは「タグ作成前でも 404 にならない」ことを優先して、`main` の
+コミット履歴と 0.1.0 相当のコミット tree を直接参照している。`v0.1.0`
+タグを切ったら下記を `compare/v0.1.0...HEAD` / `releases/tag/v0.1.0` に
+書き換える運用。
+-->
+[Unreleased]: https://github.com/hang-up33/meshforge/commits/main
+[0.1.0]: https://github.com/hang-up33/meshforge/tree/231ed020a6bfe24de8e207e53ff1b20e41f32322
