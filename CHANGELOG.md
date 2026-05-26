@@ -42,8 +42,10 @@
 
 ### Deployed
 - Streamlit Community Cloud で `main` ブランチを自動デプロイ。
-  `requirements.txt` から `.[pdf,ui]` extra を取り込む形でコア + PDF + UI
-  を一括インストール。
+  `requirements.txt` に `numpy` / `pillow` / `trimesh` / `pymupdf` /
+  `streamlit` / `streamlit-stl` を直接列挙する形でデプロイ依存を解決
+  （uv が local path entry を reject し、`pyproject.toml` へフォールバック
+  すると Poetry が `python/meshforge` の src layout を解決できないため）。
 
 <!--
 リンクは「タグ作成前でも 404 にならない」ことを優先して、`main` の
