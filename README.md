@@ -73,6 +73,7 @@ Step 7 以降（3D プレビュー / 複数入力 / エラー処理強化 / OSS 
 | 6 | GUI（Streamlit 簡易 UI） | ✅ 完了（`streamlit run python/meshforge/ui_streamlit.py`、C# 移行は将来） |
 | 7 | 3D プレビュー（streamlit-stl） | ✅ 完了（Convert 後にブラウザで STL を回転 / ズーム可能） |
 | 8 | パラメータプリセット UI | ✅ 完了（Floor plan / Logo / Terrain / Custom を selectbox で切替、form 値に反映） |
+| 9 | UI のエラー処理強化 | ✅ 完了（PyMuPDF 不在 / 壊れた PDF / 巨大ファイル / DPI 上限を `st.error` で日本語表示） |
 
 ## フォルダ構成
 
@@ -255,6 +256,7 @@ UI 層と `requirements.txt` だけ。
 | Step 6 | Avalonia/C# 移行・3D プレビュー・複数入力・複数ページ PDF・認証 |
 | Step 7 | プレビュー上の編集操作・複数ビュー・サーバ側レンダリング |
 | Step 8 | プリセット追加 UI・JSON 保存・`pixel_mm`/`dpi` のプリセット化・CLI 展開 |
+| Step 9 | CLI 側のエラー整理・多言語化・magic-byte 検証・自動ダウンサンプリング |
 
 ## 環境メモ
 

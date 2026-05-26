@@ -8,9 +8,19 @@ The UI is intentionally a thin wrapper around the same core pipeline that the
 to Avalonia / C# via subprocess) does not require touching heightmap/mesh/stl.
 """
 
+import importlib.util
 import sys
 import tempfile
 from pathlib import Path
+
+# 8 megapixel cap. A4 @ 300 DPI is ~8.7 Mpx, so anything beyond this is
+# almost certainly too large for the 1 GB RAM limit on Streamlit Cloud
+# (heightmap_to_mesh allocates ~30x the image bytes for verts + faces).
+_MAX_PIXELS = 8_000_000
+
+# Cap DPI at 600. PyMuPDF will happily rasterize at multi-thousand DPI and
+# instantly OOM, so we clamp before the request reaches load_grayscale.
+_MAX_DPI = 600.0
 
 # Streamlit Community Cloud installs deps from requirements.txt but does not
 # pip-install the meshforge package itself (Poetry can't see our src layout
@@ -80,6 +90,16 @@ uploaded = st.file_uploader(
     help="PDF input rasterizes the first page via PyMuPDF (install with `pip install -e '.[pdf]'`).",
 )
 
+# Detect PDF input + missing optional dep early, so the form below can stay
+# enabled for PNG re-uploads without the user having to clear the error.
+_pdf_uploaded = uploaded is not None and uploaded.name.lower().endswith(".pdf")
+_pymupdf_available = importlib.util.find_spec("fitz") is not None
+if _pdf_uploaded and not _pymupdf_available:
+    st.error(
+        "PDF 入力には PyMuPDF が必要です。"
+        "リポジトリ直下で `pip install -e '.[pdf]'` を実行してください。"
+    )
+
 preset = st.selectbox(
     "Preset",
     list(PRESETS.keys()),
@@ -123,9 +143,11 @@ with st.form("convert"):
         dpi = st.number_input(
             "PDF DPI (PDF input only)",
             min_value=1.0,
+            max_value=_MAX_DPI,
             value=DEFAULTS["dpi"],
             step=10.0,
             format="%.1f",
+            help=f"Higher DPI = more detail but more memory. Capped at {_MAX_DPI:.0f} DPI to avoid OOM on Streamlit Cloud.",
         )
     with col_right:
         pixel_mm = st.number_input(
@@ -153,7 +175,7 @@ with st.form("convert"):
     submitted = st.form_submit_button(
         "Convert",
         type="primary",
-        disabled=uploaded is None,
+        disabled=uploaded is None or (_pdf_uploaded and not _pymupdf_available),
     )
 
 if submitted and uploaded is not None:
@@ -165,19 +187,60 @@ if submitted and uploaded is not None:
         tmp.write(uploaded.getvalue())
         tmp_path = tmp.name
 
+    # Sentinel: if any step below sets this to a value, render preview /
+    # download. Using a name binding instead of nesting lets the cleanup in
+    # `finally` run even when we bail early with a friendly error.
+    stl_bytes: bytes | None = None
+    mesh = None
+
     try:
         with st.spinner("Converting..."):
-            image = load_grayscale(tmp_path, dpi)
-            heights = to_heights(
-                image,
-                invert=invert,
-                threshold=threshold if use_threshold else None,
-                max_height_mm=max_height_mm,
-            )
-            mesh = heightmap_to_mesh(heights, pixel_mm=pixel_mm, base_mm=base_mm)
-            stl_bytes = serialize(mesh)
+            try:
+                image = load_grayscale(tmp_path, dpi)
+            except ImportError:
+                # Belt-and-suspenders: the form-level guard above should have
+                # caught this, but if a user somehow bypasses it (e.g. PNG
+                # with .pdf extension) we still want a clean message.
+                st.error(
+                    "PDF 入力には PyMuPDF が必要です。"
+                    "`pip install -e '.[pdf]'` を実行してください。"
+                )
+            except FileNotFoundError as e:
+                st.error(f"入力ファイルが見つかりません: {e}")
+            except ValueError as e:
+                # e.g. PDF with no pages (raised by rasterize_pdf).
+                st.error(f"入力ファイルが処理できません: {e}")
+            except Exception as e:
+                # PIL.UnidentifiedImageError, corrupt PDF, password-protected
+                # PDF, etc. Show the exception type so debugging is possible
+                # without dumping a full traceback to the user.
+                st.error(
+                    f"入力ファイルを読み込めませんでした "
+                    f"({type(e).__name__}: {e})。サポート形式は PNG / PDF です。"
+                )
+            else:
+                pixels = image.width * image.height
+                if pixels > _MAX_PIXELS:
+                    st.error(
+                        f"入力サイズが大きすぎます "
+                        f"({image.width}×{image.height} = {pixels / 1_000_000:.1f} Mpx)。"
+                        f"上限は {_MAX_PIXELS / 1_000_000:.0f} Mpx です。"
+                        " DPI を下げるか、より小さい画像を使ってください。"
+                    )
+                else:
+                    heights = to_heights(
+                        image,
+                        invert=invert,
+                        threshold=threshold if use_threshold else None,
+                        max_height_mm=max_height_mm,
+                    )
+                    mesh = heightmap_to_mesh(heights, pixel_mm=pixel_mm, base_mm=base_mm)
+                    stl_bytes = serialize(mesh)
     finally:
         Path(tmp_path).unlink(missing_ok=True)
+
+    if stl_bytes is None or mesh is None:
+        st.stop()
 
     download_name = Path(uploaded.name).with_suffix(".stl").name
     st.success(summary(mesh, download_name))
