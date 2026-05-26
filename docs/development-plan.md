@@ -137,10 +137,36 @@
 - **完了条件**: 想定エラーケースで UI が traceback を出さず、`st.error` で
   日本語メッセージを表示する。サンプル PNG / PDF の正常系には影響しない
 
-### Step 10 以降 (構想のみ、ここでは確定しない)
+### Step 10: OSS リリース整備
+- **判断**: Streamlit Community Cloud で URL 公開済みなので、コードを
+  「外から見て使える」状態にするためのドキュメントとライセンスを整える。
+  実装変更は最小限で、リポジトリ直下のメタファイル中心。
+- **作るもの**:
+  - `LICENSE`（MIT, Copyright holder = hang-up33）
+  - `CONTRIBUTING.md`（AGENTS.md の規約から外部コントリビュータ向けに
+    必要な部分だけ抽出。Codex レビューフローや段階的計画の趣旨も明記）
+  - `CHANGELOG.md`（Keep a Changelog 形式。Step 1〜9 を `0.1.0` として
+    まとめ、`pyproject.toml` の version と一致させる）
+  - `README.md` に「Demo」セクション（Streamlit Community Cloud の URL +
+    GIF プレースホルダ）と LICENSE / CONTRIBUTING / CHANGELOG への
+    リンクを追記
+- **やらないこと**:
+  - GitHub Actions の release ワークフロー / 自動タグ付け
+  - PyPI 公開
+  - バージョニング自動化（version は手動で `pyproject.toml` を編集）
+  - 多言語ドキュメント（README / CONTRIBUTING は日本語のまま）
+  - デモ GIF 自体の生成（プレースホルダのみ。ユーザーが画面録画して
+    `docs/demo.gif` 等に置く想定）
+  - CI / lint / test 基盤の整備（必要になってから）
+- **完了条件**:
+  - GitHub 上で LICENSE が認識される（MIT バッジが付く）
+  - `README.md` から CONTRIBUTING / CHANGELOG / Demo URL に辿れる
+  - `CHANGELOG.md` に Step 1〜9 が `0.1.0` として記載されている
+
+### Step 11 以降 (構想のみ、ここでは確定しない)
 - 複数入力対応（複数ページ PDF / 複数 PNG）
-- OSS リリース整備（LICENSE / CONTRIBUTING / CHANGELOG / デモ GIF）
 - 編集可能 3D の最初の一歩
+- デモ GIF の作成と差し込み
 
 ## 各ステップの「やらないこと」リスト (重要)
 
@@ -157,6 +183,7 @@
 | Step 7 | プレビュー上の編集操作・複数ビュー・サーバ側レンダリング |
 | Step 8 | プリセット追加 UI・JSON 保存・`pixel_mm`/`dpi` のプリセット化・CLI 展開 |
 | Step 9 | CLI 側のエラー整理・多言語化・magic-byte 検証・自動ダウンサンプリング |
+| Step 10 | GitHub Actions release・PyPI 公開・バージョニング自動化・多言語ドキュメント・GIF 自体の生成・CI/lint/test 基盤 |
 
 ## 着手判断
 
