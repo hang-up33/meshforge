@@ -89,8 +89,12 @@ preset = st.selectbox(
 
 # When the user switches preset, overwrite session_state for the affected
 # widgets. Tracking `_applied_preset` prevents us from clobbering manual
-# tweaks on every rerun.
-if preset != _CUSTOM and st.session_state.get("_applied_preset") != preset:
+# tweaks on every rerun. Selecting Custom clears the tracker so picking the
+# *same* preset again after tweaks re-applies its values (otherwise the
+# tracker would still match and skip the overwrite).
+if preset == _CUSTOM:
+    st.session_state["_applied_preset"] = None
+elif st.session_state.get("_applied_preset") != preset:
     for k, v in PRESETS[preset].items():
         st.session_state[k] = v
     st.session_state["_applied_preset"] = preset
