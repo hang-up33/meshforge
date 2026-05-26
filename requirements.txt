@@ -9,3 +9,4 @@ pillow
 trimesh
 pymupdf
 streamlit
+streamlit-stl

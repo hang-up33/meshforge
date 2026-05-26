@@ -17,7 +17,7 @@ dependencies = [
 # Streamlit UI (Step 6) is also optional — the core CLI stays usable without it.
 [project.optional-dependencies]
 pdf = ["PyMuPDF"]
-ui = ["streamlit"]
+ui = ["streamlit", "streamlit-stl"]
 
 [tool.setuptools.packages.find]
 where = ["python"]

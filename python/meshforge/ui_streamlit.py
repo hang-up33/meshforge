@@ -22,6 +22,7 @@ if str(_PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(_PYTHON_DIR))
 
 import streamlit as st
+from streamlit_stl import stl_from_text
 
 from meshforge.cli import DEFAULTS
 from meshforge.heightmap import load_grayscale, to_heights
@@ -121,6 +122,18 @@ if submitted and uploaded is not None:
 
     download_name = Path(uploaded.name).with_suffix(".stl").name
     st.success(summary(mesh, download_name))
+
+    st.subheader("3D preview")
+    stl_from_text(
+        text=stl_bytes,
+        color="#bfbfbf",
+        material="material",
+        auto_rotate=False,
+        opacity=1.0,
+        height=500,
+        key="stl-preview",
+    )
+
     st.download_button(
         "Download STL",
         data=stl_bytes,
