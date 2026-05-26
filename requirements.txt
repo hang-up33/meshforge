@@ -1,4 +1,11 @@
-# Streamlit Community Cloud reads this file. It installs meshforge from the
-# repo root (pyproject.toml) with the pdf + ui extras, which transitively pulls
-# numpy / pillow / trimesh / PyMuPDF / streamlit.
-.[pdf,ui]
+# Streamlit Community Cloud reads this file. We list dependencies directly
+# instead of `.[pdf,ui]` because uv (which Streamlit Cloud prefers for
+# requirements.txt) rejects local path entries, and falling back to
+# pyproject.toml triggers Poetry — which cannot find our `python/meshforge`
+# src layout. The meshforge package itself is loaded via a sys.path tweak
+# at the top of `python/meshforge/ui_streamlit.py`.
+numpy
+pillow
+trimesh
+pymupdf
+streamlit

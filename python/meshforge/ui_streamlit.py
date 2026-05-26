@@ -8,8 +8,18 @@ The UI is intentionally a thin wrapper around the same core pipeline that the
 to Avalonia / C# via subprocess) does not require touching heightmap/mesh/stl.
 """
 
+import sys
 import tempfile
 from pathlib import Path
+
+# Streamlit Community Cloud installs deps from requirements.txt but does not
+# pip-install the meshforge package itself (Poetry can't see our src layout
+# under `python/`). Add `python/` to sys.path so `import meshforge` resolves.
+# Local `pip install -e .` keeps working — this insert is a no-op when the
+# package is already importable from site-packages.
+_PYTHON_DIR = Path(__file__).resolve().parents[1]
+if str(_PYTHON_DIR) not in sys.path:
+    sys.path.insert(0, str(_PYTHON_DIR))
 
 import streamlit as st
 
