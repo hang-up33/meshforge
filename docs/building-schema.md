@@ -28,22 +28,46 @@
 }
 ```
 
-- `schema_version`: **必須**。後方互換チェック用。Step 12-1 時点では 1 固定。
+- `schema_version`: **必須**。後方互換チェック用。Step 12-2 時点では 1 固定。
+- `scale_mm_per_px`: JSON 内の 2D 座標 (`walls[].start` / `end` など) を mm に
+  換算する倍率。手書き JSON は `1.0` のままで座標を mm として書くのが楽。
+  OpenCV パイプライン (Step 12-7) が画像 px から JSON を生成する場合のみ
+  非 1.0 を入れる。`thickness_mm` / `height_mm` は名前のとおり常に mm で、
+  `scale_mm_per_px` は影響しない。
 - 後段フィールド (`openings` / `rooms` / `roof` / `furniture`) は各 Step が
   来るまでは無視される。`walls` だけが必須キー (Step 12-2 以降)。
 
 ## フィールド詳細
 
-### `walls` (Step 12-2 で実装予定)
+### `walls` (Step 12-2 で実装)
 
 ```jsonc
 {
-  "start": [x_mm, y_mm],   // 壁の始点 (X-Y 平面、原点は左上)
-  "end":   [x_mm, y_mm],   // 壁の終点
-  "thickness_mm": 150.0,   // 壁厚
-  "height_mm":    2400.0   // 壁高
+  "start": [x, y],         // 壁の始点 (X-Y 平面、原点は左上、単位は scale_mm_per_px に従う)
+  "end":   [x, y],         // 壁の終点 (同上)
+  "thickness_mm": 150.0,   // 壁厚 (常に mm)
+  "height_mm":    2400.0   // 壁高 (常に mm)
 }
 ```
+
+実装 (`python/meshforge/building/assemble.py`):
+- `start` → `end` を中心線とし、`thickness_mm` の厚み × `height_mm` の高さの
+  直方体を 1 本の壁として組み立てる。Z=0 が床、Z=`height_mm` が天井。
+- 隣接する壁の角はそのまま直方体の重なりとして残す (boolean union しない)。
+  スライサは内部の重複面を問題なく塗り潰す。union による厳密な watertight
+  化は Step 12-3 で開口部をくり抜くタイミングで manifold3d 導入とまとめて
+  検討する。
+- 0 長壁・厚さ/高さが正の有限数でないものは `config error` で reject。
+
+実行例:
+
+```bash
+.venv/bin/python -m meshforge convert \
+  --config samples/building_minimal.json out.stl
+```
+
+`samples/building_minimal.json` は 80 mm × 60 mm × 24 mm のミニ建物 (壁厚
+4 mm、4 本) で、印刷可能なサイズの最小例として置いている。
 
 ### `openings` (Step 12-3 で実装予定)
 

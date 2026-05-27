@@ -99,6 +99,8 @@ Step 11 で「編集可能 3D」の最初の一歩として、明度バンドご
 | 9 | UI のエラー処理強化 | ✅ 完了（PyMuPDF 不在 / 壊れた PDF / 巨大ファイル / DPI 上限を `st.error` で日本語表示） |
 | 10 | OSS リリース整備 | ✅ 完了（LICENSE / CONTRIBUTING / CHANGELOG / README に Demo セクション追加） |
 | 11 | 高さレイヤー（マルチバンド閾値） | ✅ 完了（`layers` を JSON で指定、明度バンドごとに独立した高さの STL を生成。`samples/multilayer.json` 参照） |
+| 12-1 | `--mode building` 骨格 + 中間 JSON スキーマ仕様 | ✅ 完了（`docs/building-schema.md` 正本、`run_building` は NotImplementedError） |
+| 12-2 | 手書き JSON `walls[]` → 壁 STL | ✅ 完了（`samples/building_minimal.json` で 80×60×24 mm の壁箱が出る） |
 
 ## フォルダ構成
 

@@ -184,15 +184,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def resolve_settings(args: argparse.Namespace) -> dict:
-    # With --config, exactly one positional is ambiguous (argparse always
-    # binds the first to `input`, so `meshforge convert out.stl --config c.json`
-    # silently overrides input instead of output).
-    if args.config and (args.input is None) != (args.output is None):
-        raise ValueError("with --config, pass both positional input and output, or neither")
     s: dict = {"input": None, "output": None, **DEFAULTS}
     # building_spec は building モード時のみ非 None。SETTINGS_KEYS には含めない
     # ので save_config の出力には混ざらず、legacy roundtrip と独立。
     s["building_spec"] = None
+    is_building_config = False
     if args.config:
         with open(args.config) as f:
             cfg = json.load(f)
@@ -205,6 +201,7 @@ def resolve_settings(args: argparse.Namespace) -> dict:
         # 分けずに済む。--mode dam + building JSON の組み合わせは曖昧なので
         # 明示的に拒否する (legacy 検証で謎エラーになるより先に潰す)。
         if "schema_version" in cfg:
+            is_building_config = True
             cli_mode = getattr(args, "mode", None)
             if cli_mode is not None and cli_mode != "building":
                 raise ValueError(
@@ -224,11 +221,31 @@ def resolve_settings(args: argparse.Namespace) -> dict:
                         f"{args.config}: {k!r} must be {kind}, got {type(v).__name__}"
                     )
             s.update(cfg)
+    if is_building_config:
+        # building モードは入力画像を持たないので CLI は positional 1 個 (output) だけ
+        # 受け取る。argparse は最初の positional を `input` に束縛するので、ここで
+        # 詰め替える。`convert --config bld.json out.stl` → s["output"] = "out.stl"。
+        if args.output is not None:
+            raise ValueError(
+                f"{args.config}: building mode takes only one positional (output STL); "
+                f"got input + output"
+            )
+        if args.input is not None:
+            s["output"] = args.input
+    else:
+        # With --config, exactly one positional is ambiguous (argparse always
+        # binds the first to `input`, so `meshforge convert out.stl --config c.json`
+        # silently overrides input instead of output).
+        if args.config and (args.input is None) != (args.output is None):
+            raise ValueError("with --config, pass both positional input and output, or neither")
     a = vars(args)
     # SUPPRESS means absent-from-namespace; positionals (input/output) are
     # always present but None when omitted. Either way, only override when
     # the user actually provided a value on the CLI.
+    # building モードでは input/output は既に詰め替え済みなのでスキップ。
     for k in SETTINGS_KEYS:
+        if is_building_config and k in ("input", "output"):
+            continue
         if k in a and a[k] is not None:
             s[k] = a[k]
     return s
@@ -238,15 +255,17 @@ def validate(s: dict) -> str | None:
     if s["mode"] not in MODES:
         return f"mode must be one of {list(MODES)}, got {s['mode']!r}"
     if s["mode"] == "building":
-        # building は --config の中間 JSON 駆動で、input 画像 / output STL の
-        # CLI 配線は Step 12-2 以降。Step 12-1 は schema_version マーカーだけ
-        # 検証し、それ以降は run_building 側で NotImplementedError を返す。
+        # building は --config の中間 JSON 駆動。schema_version マーカー検証 +
+        # output STL パス必須までを CLI 側で見て、walls 以降のフィールド検証は
+        # building/assemble.py 側 (中間 JSON の正本に近い場所) で担当する。
         spec = s.get("building_spec")
         if not spec:
             return "building mode requires --config <building.json> with 'schema_version'"
         v = spec.get("schema_version")
         if v != 1:
             return f"building JSON: schema_version must be 1, got {v!r}"
+        if not s["output"]:
+            return "building mode requires an output STL path (positional, e.g. 'meshforge convert --config b.json out.stl')"
         return None
     if not s["input"] or not s["output"]:
         return "input and output are required (positional args or via --config)"
@@ -303,12 +322,11 @@ def cmd_convert(args: argparse.Namespace) -> int:
         from meshforge.building.assemble import run as run_building
         try:
             run_building(settings)
-        except NotImplementedError as e:
+        except (NotImplementedError, ValueError) as e:
             print(f"building mode: {e}", file=sys.stderr)
             return 1
         # --save-config roundtrip は legacy SETTINGS_KEYS 用で building schema
-        # を書き戻せない。building の永続化は Step 12-2 以降の責務なので
-        # 12-1 時点では NotImplementedError を返した後で何もしない。
+        # を書き戻せない。building の永続化は Step 12-3+ の責務として保留。
         return 0
 
     image = load_grayscale(settings["input"], settings["dpi"])
