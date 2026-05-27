@@ -1,3 +1,10 @@
 {
-  "schema_version": 1
+  "schema_version": 1,
+  "scale_mm_per_px": 1.0,
+  "walls": [
+    {"start": [0,   0],  "end": [80,  0],  "thickness_mm": 4.0, "height_mm": 24.0},
+    {"start": [80,  0],  "end": [80,  60], "thickness_mm": 4.0, "height_mm": 24.0},
+    {"start": [80,  60], "end": [0,   60], "thickness_mm": 4.0, "height_mm": 24.0},
+    {"start": [0,   60], "end": [0,   0],  "thickness_mm": 4.0, "height_mm": 24.0}
+  ]
 }

@@ -191,7 +191,30 @@
   - 既存サンプル（`layers` キーなし）の出力 STL は Step 10 とバイト一致
   - `layers` と `threshold` の同時指定は `config error` で exit 1
 
-### Step 12 以降 (構想のみ、ここでは確定しない)
+### Step 12: 建築モード (`--mode building`)
+- **判断**: Step 11 までは「画像の明度を高さ化する単一押し出し」だったので、
+  「平面図 → 建物 3D」をやるには別パイプラインが要る。OpenCV で幾何抽出 →
+  Claude API で意味付け → 中間 JSON → trimesh で組み立て、という流れを
+  小ステップに割って積み上げる。中間 JSON のスキーマ正本は
+  [`docs/building-schema.md`](building-schema.md)。
+
+- **Step 12-1 (完了)**: `--mode building` の骨格と中間 JSON スキーマ仕様。
+  - 詳細: コミット `7bdcde9` / `1d0b568` / PR #19
+- **Step 12-2 (進行中)**: 手書き JSON の `walls[]` から壁 STL を生成。
+  - `building/assemble.py` で walls 検証 + trimesh で各壁を箱化 + concat
+  - CLI: `convert --config building.json out.stl` の output positional 受付
+  - サンプル: `samples/building_minimal.json` (80 mm × 60 mm × 24 mm の箱)
+  - **やらないこと**: 角の boolean union (内部の重複面はそのまま) / 開口部 /
+    床スラブ / 屋根 / 家具 / 画像→JSON 自動生成 / 複数階 /
+    GLB 出力 / building 用 `--save-config` ラウンドトリップ
+  - **完了条件**: `python -m meshforge convert --config samples/building_minimal.json out.stl`
+    で 4 本の壁が立った STL が出る (各 box が watertight)。既存 dam モードの
+    `dome.png` 出力は md5 が変わらない (`e1a9015c...`)。
+- **Step 12-3 以降 (構想)**: 開口部 (door/window) のくり抜き / 部屋ポリゴンの
+  床スラブ / 画像→中間 JSON 自動生成 (OpenCV) / Claude API による意味付け /
+  屋根 / 家具 / Streamlit UI への露出。
+
+### Step 13 以降 (構想のみ、ここでは確定しない)
 - マルチバンド UI 編集（Streamlit に layers フォームを追加）
 - 複数入力対応（複数ページ PDF / 複数 PNG）
 - 領域単位（矩形 / マスク）の高さ編集
@@ -214,6 +237,7 @@
 | Step 9 | CLI 側のエラー整理・多言語化・magic-byte 検証・自動ダウンサンプリング |
 | Step 10 | GitHub Actions release・PyPI 公開・バージョニング自動化・多言語ドキュメント・GIF 自体の生成・CI/lint/test 基盤 |
 | Step 11 | UI フォーム編集・CLI 直接フラグ・領域単位編集・押出方向変更・開口部指定・バンド境界の連続補間・複数ページ PDF |
+| Step 12-2 | 角の boolean union・開口部・床スラブ・屋根・家具・画像→JSON 自動生成・複数階・GLB 出力・building 用 `--save-config` |
 
 ## 着手判断
 
