@@ -43,10 +43,17 @@ state 優先で判定
 
 ### 1. PR / リポジトリ情報を確定
 
+Claude Code のスラッシュコマンドではユーザーが渡した引数列が `$ARGUMENTS` に展開される（`/codex-loop 18 --once` なら `ARGUMENTS="18 --once"`）。`$ARG1` は規約に存在しないので使わない。
+
 ```sh
-PR="${ARG1:-$(gh pr view --json number -q .number)}"
+# ARGUMENTS から最初の数字列を PR 番号として抽出、無ければ現在ブランチの PR
+PR=$(printf '%s\n' "$ARGUMENTS" | grep -oE '[0-9]+' | head -1)
+PR="${PR:-$(gh pr view --json number -q .number)}"
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 [ -z "$PR" ] && echo "PR が無い。先に gh pr create してください" && exit 1
+
+# フラグ判定（--once が含まれていればフラグ ON）
+case " $ARGUMENTS " in *" --once "*) ONCE=1 ;; *) ONCE=0 ;; esac
 ```
 
 ### 2. 初回トリガ: `@codex review` を投稿
@@ -152,9 +159,8 @@ force push は使わない（追加コミットで対応）。
 SINCE=$(date -u -v-1S +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
     || date -u -d '1 second ago' +%Y-%m-%dT%H:%M:%SZ)
 HEAD_SHA=$(git rev-parse HEAD)
+[ "$ONCE" = "1" ] && echo "--once 指定のため終了" && exit 0
 ```
-
-`--once` フラグが指定されていればここで終了。
 
 ### 9. 完了報告
 
