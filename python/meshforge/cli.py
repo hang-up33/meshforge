@@ -21,7 +21,13 @@ DEFAULTS = {
     # Step 11: 多段階の高さレイヤー。明度バンドごとに固定高を返す形に
     # 拡張可能。None なら従来の threshold / max_height_mm 経路のまま。
     "layers": None,
+    # Step 12: 変換モード。"dam" は従来の明度→高さ押し出し。
+    # "building" は平面図を解釈して壁/床/屋根/家具を組み立てる新モード
+    # (実装は Step 12-2 以降)。default は dam なので既存 JSON 互換。
+    "mode": "dam",
 }
+
+MODES = ("dam", "building")
 
 SETTINGS_KEYS = ["input", "output", *DEFAULTS]
 
@@ -40,6 +46,7 @@ JSON_TYPES = {
     "max_height_mm": "number",
     "base_mm": "number",
     "layers": "layer list or null",
+    "mode": "string",
 }
 
 
@@ -142,6 +149,14 @@ def _add_convert_args(c: argparse.ArgumentParser) -> None:
         help="solid base thickness in mm; default 1.0",
     )
     c.add_argument(
+        "--mode",
+        choices=list(MODES),
+        default=argparse.SUPPRESS,
+        help="conversion mode: 'dam' (default) is the legacy heightmap extrusion; "
+             "'building' interprets a floor plan into walls/floors/roof/furniture "
+             "(Step 12+, gated until implemented).",
+    )
+    c.add_argument(
         "--config",
         default=None,
         metavar="FILE",
@@ -175,21 +190,40 @@ def resolve_settings(args: argparse.Namespace) -> dict:
     if args.config and (args.input is None) != (args.output is None):
         raise ValueError("with --config, pass both positional input and output, or neither")
     s: dict = {"input": None, "output": None, **DEFAULTS}
+    # building_spec は building モード時のみ非 None。SETTINGS_KEYS には含めない
+    # ので save_config の出力には混ざらず、legacy roundtrip と独立。
+    s["building_spec"] = None
     if args.config:
         with open(args.config) as f:
             cfg = json.load(f)
         if not isinstance(cfg, dict):
             raise ValueError(f"{args.config}: expected a JSON object at top level")
-        unknown = sorted(set(cfg) - set(SETTINGS_KEYS))
-        if unknown:
-            raise ValueError(f"{args.config}: unknown keys {unknown}")
-        for k, v in cfg.items():
-            kind = JSON_TYPES[k]
-            if not _matches_json_type(v, kind):
+        # Building の中間 JSON は legacy heightmap 設定 JSON と完全に別形状
+        # (walls / openings / rooms — docs/building-schema.md)。`schema_version`
+        # の有無で二者を判別し、building 側は SETTINGS_KEYS 検証を迂回して
+        # そのまま run_building へ渡す。これで --config 用フラグを二系統に
+        # 分けずに済む。--mode dam + building JSON の組み合わせは曖昧なので
+        # 明示的に拒否する (legacy 検証で謎エラーになるより先に潰す)。
+        if "schema_version" in cfg:
+            cli_mode = getattr(args, "mode", None)
+            if cli_mode is not None and cli_mode != "building":
                 raise ValueError(
-                    f"{args.config}: {k!r} must be {kind}, got {type(v).__name__}"
+                    f"{args.config}: looks like a building JSON (has 'schema_version') "
+                    f"but --mode {cli_mode} was specified; use --mode building or omit --mode"
                 )
-        s.update(cfg)
+            s["mode"] = "building"
+            s["building_spec"] = cfg
+        else:
+            unknown = sorted(set(cfg) - set(SETTINGS_KEYS))
+            if unknown:
+                raise ValueError(f"{args.config}: unknown keys {unknown}")
+            for k, v in cfg.items():
+                kind = JSON_TYPES[k]
+                if not _matches_json_type(v, kind):
+                    raise ValueError(
+                        f"{args.config}: {k!r} must be {kind}, got {type(v).__name__}"
+                    )
+            s.update(cfg)
     a = vars(args)
     # SUPPRESS means absent-from-namespace; positionals (input/output) are
     # always present but None when omitted. Either way, only override when
@@ -201,6 +235,19 @@ def resolve_settings(args: argparse.Namespace) -> dict:
 
 
 def validate(s: dict) -> str | None:
+    if s["mode"] not in MODES:
+        return f"mode must be one of {list(MODES)}, got {s['mode']!r}"
+    if s["mode"] == "building":
+        # building は --config の中間 JSON 駆動で、input 画像 / output STL の
+        # CLI 配線は Step 12-2 以降。Step 12-1 は schema_version マーカーだけ
+        # 検証し、それ以降は run_building 側で NotImplementedError を返す。
+        spec = s.get("building_spec")
+        if not spec:
+            return "building mode requires --config <building.json> with 'schema_version'"
+        v = spec.get("schema_version")
+        if v != 1:
+            return f"building JSON: schema_version must be 1, got {v!r}"
+        return None
     if not s["input"] or not s["output"]:
         return "input and output are required (positional args or via --config)"
     t = s["threshold"]
@@ -248,6 +295,21 @@ def cmd_convert(args: argparse.Namespace) -> int:
     if err:
         print(err, file=sys.stderr)
         return 1
+
+    if settings["mode"] == "building":
+        # Late import: the building pipeline pulls heavier optional deps
+        # (opencv, anthropic, manifold3d) added in Step 12-3+. Keeping the
+        # import lazy means `--mode dam` runs never touch them.
+        from meshforge.building.assemble import run as run_building
+        try:
+            run_building(settings)
+        except NotImplementedError as e:
+            print(f"building mode: {e}", file=sys.stderr)
+            return 1
+        # --save-config roundtrip は legacy SETTINGS_KEYS 用で building schema
+        # を書き戻せない。building の永続化は Step 12-2 以降の責務なので
+        # 12-1 時点では NotImplementedError を返した後で何もしない。
+        return 0
 
     image = load_grayscale(settings["input"], settings["dpi"])
     heights = to_heights(
