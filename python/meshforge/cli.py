@@ -21,7 +21,13 @@ DEFAULTS = {
     # Step 11: 多段階の高さレイヤー。明度バンドごとに固定高を返す形に
     # 拡張可能。None なら従来の threshold / max_height_mm 経路のまま。
     "layers": None,
+    # Step 12: 変換モード。"dam" は従来の明度→高さ押し出し。
+    # "building" は平面図を解釈して壁/床/屋根/家具を組み立てる新モード
+    # (実装は Step 12-2 以降)。default は dam なので既存 JSON 互換。
+    "mode": "dam",
 }
+
+MODES = ("dam", "building")
 
 SETTINGS_KEYS = ["input", "output", *DEFAULTS]
 
@@ -40,6 +46,7 @@ JSON_TYPES = {
     "max_height_mm": "number",
     "base_mm": "number",
     "layers": "layer list or null",
+    "mode": "string",
 }
 
 
@@ -142,6 +149,14 @@ def _add_convert_args(c: argparse.ArgumentParser) -> None:
         help="solid base thickness in mm; default 1.0",
     )
     c.add_argument(
+        "--mode",
+        choices=list(MODES),
+        default=argparse.SUPPRESS,
+        help="conversion mode: 'dam' (default) is the legacy heightmap extrusion; "
+             "'building' interprets a floor plan into walls/floors/roof/furniture "
+             "(Step 12+, gated until implemented).",
+    )
+    c.add_argument(
         "--config",
         default=None,
         metavar="FILE",
@@ -203,6 +218,8 @@ def resolve_settings(args: argparse.Namespace) -> dict:
 def validate(s: dict) -> str | None:
     if not s["input"] or not s["output"]:
         return "input and output are required (positional args or via --config)"
+    if s["mode"] not in MODES:
+        return f"mode must be one of {list(MODES)}, got {s['mode']!r}"
     t = s["threshold"]
     if t is not None and not 0 <= t <= 255:
         return "threshold must be in 0..255"
@@ -248,6 +265,21 @@ def cmd_convert(args: argparse.Namespace) -> int:
     if err:
         print(err, file=sys.stderr)
         return 1
+
+    if settings["mode"] == "building":
+        # Late import: the building pipeline pulls heavier optional deps
+        # (opencv, anthropic, manifold3d) added in Step 12-3+. Keeping the
+        # import lazy means `--mode dam` runs never touch them.
+        from meshforge.building.assemble import run as run_building
+        try:
+            run_building(settings)
+        except NotImplementedError as e:
+            print(f"building mode: {e}", file=sys.stderr)
+            return 1
+        if args.save_config:
+            save_config(args.save_config, settings)
+            print(f"wrote {args.save_config}")
+        return 0
 
     image = load_grayscale(settings["input"], settings["dpi"])
     heights = to_heights(
