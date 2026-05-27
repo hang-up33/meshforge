@@ -111,6 +111,13 @@ gh api --paginate "repos/$REPO/issues/$PR/comments?since=${SINCE}" \
 
 「badge / 文言の有無」だけで判断しない。本文に badge が付かない `CHANGES_REQUESTED` を取りこぼしてループが早期終了する事故が起きる。
 
+**シグナル検出後の余韻待機**: 手順 4 で 3 API のいずれか 1 つでも新着シグナルが取れた時点で待機ループは抜けるが、Codex は **issue comment（タスク結果サマリ等）を先に出してから reviews / inline を後追いで投稿する** ケースがある（実測 30〜60 秒程度の時差）。issue comment だけ拾って「クリーン文言ぽいので終了」と即断するとレビュー本体の指摘を取りこぼす。**シグナル検出後は 60 秒待ってから 3 API を再 fetch して判定する**こと:
+
+```sh
+sleep 60
+# ここで手順 4 と同じ 3 API 取得を再実行 → 改めて判定
+```
+
 優先順:
 
 1. reviews `state == "CHANGES_REQUESTED"` → **無条件で** 修正フェーズ (6) へ
