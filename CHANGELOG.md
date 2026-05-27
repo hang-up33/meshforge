@@ -10,6 +10,11 @@
 ### Added
 - `LICENSE` (MIT)、`CONTRIBUTING.md`、本 `CHANGELOG.md`（Step 10: OSS リリース整備）
 - README に Demo セクション（Streamlit Community Cloud の公開 URL 案内）
+- **Step 11**: 高さレイヤー（マルチバンド閾値）。JSON 設定の `layers` で
+  「明度バンドごとに独立した高さ」を指定可能に。`to_heights` に `layers`
+  引数を追加し、`np.digitize` でバンド判定 → バンドの `height_mm` を返す。
+  `threshold` との同時指定は config error で弾く。`samples/multilayer.json`
+  を例として追加。UI 拡張は次 Step 以降。
 
 ## [0.1.0] - 2026-05-26
 

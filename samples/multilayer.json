@@ -1,0 +1,16 @@
+{
+  "input": "samples/dome.png",
+  "output": "samples/dome_multilayer.stl",
+  "invert": false,
+  "threshold": null,
+  "dpi": 150.0,
+  "pixel_mm": 0.5,
+  "max_height_mm": 10.0,
+  "base_mm": 1.0,
+  "layers": [
+    {"max": 64, "height_mm": 0.0},
+    {"max": 128, "height_mm": 3.0},
+    {"max": 192, "height_mm": 6.0},
+    {"max": 255, "height_mm": 10.0}
+  ]
+}
