@@ -146,10 +146,11 @@ force push は使わない（追加コミットで対応）。
 
 ### 8. 基準値を再確定してループ先頭へ
 
-**`SINCE` と `HEAD_SHA` を必ず再取得**してから手順 3 へ。再取得しないと旧ラウンドの値で判定して誤動作する:
+**`SINCE` と `HEAD_SHA` を必ず再取得**してから手順 3 へ。再取得しないと旧ラウンドの値で判定して誤動作する。**`SINCE` は手順 2 と同じく 1 秒戻して取得する**（揃えないと 2 ラウンド目以降で同じ境界取りこぼしバグが再発する）:
 
 ```sh
-SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+SINCE=$(date -u -v-1S +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+    || date -u -d '1 second ago' +%Y-%m-%dT%H:%M:%SZ)
 HEAD_SHA=$(git rev-parse HEAD)
 ```
 
