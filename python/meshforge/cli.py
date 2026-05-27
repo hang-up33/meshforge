@@ -18,6 +18,9 @@ DEFAULTS = {
     "pixel_mm": 0.5,        # each input pixel is a pixel_mm × pixel_mm cell in X/Y
     "max_height_mm": 10.0,  # brightness 255 -> this many mm tall
     "base_mm": 1.0,         # solid base thickness
+    # Step 11: 多段階の高さレイヤー。明度バンドごとに固定高を返す形に
+    # 拡張可能。None なら従来の threshold / max_height_mm 経路のまま。
+    "layers": None,
 }
 
 SETTINGS_KEYS = ["input", "output", *DEFAULTS]
@@ -36,6 +39,7 @@ JSON_TYPES = {
     "pixel_mm": "number",
     "max_height_mm": "number",
     "base_mm": "number",
+    "layers": "layer list or null",
 }
 
 
@@ -48,7 +52,37 @@ def _matches_json_type(value, kind: str) -> bool:
         return value is None or (isinstance(value, int) and not isinstance(value, bool))
     if kind == "number":
         return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if kind == "layer list or null":
+        return value is None or isinstance(value, list)
     raise AssertionError(f"unknown json type kind: {kind!r}")
+
+
+def _validate_layers(layers: list) -> str | None:
+    # bands は {"max": 0..255 int, "height_mm": positive finite number} の
+    # 列で、max は昇順かつ各バンドが空でないこと（max が等しいと幅 0 で
+    # 該当バンドが選ばれない）。最後のバンドが 255 を覆う必要は無い（
+    # to_heights 側で clip するので最終バンドが上限超を吸収する）。
+    if not layers:
+        return "layers must be a non-empty list"
+    prev_max: int | None = None
+    for i, layer in enumerate(layers):
+        if not isinstance(layer, dict):
+            return f"layers[{i}] must be an object"
+        keys = set(layer)
+        if keys != {"max", "height_mm"}:
+            return f"layers[{i}] must have exactly keys 'max' and 'height_mm', got {sorted(keys)}"
+        m = layer["max"]
+        h = layer["height_mm"]
+        if not (isinstance(m, int) and not isinstance(m, bool)) or not 0 <= m <= 255:
+            return f"layers[{i}].max must be an integer in 0..255"
+        if not (isinstance(h, (int, float)) and not isinstance(h, bool)):
+            return f"layers[{i}].height_mm must be a number"
+        if not math.isfinite(h) or h < 0:
+            return f"layers[{i}].height_mm must be finite and >= 0"
+        if prev_max is not None and m <= prev_max:
+            return f"layers[{i}].max ({m}) must be strictly greater than layers[{i-1}].max ({prev_max})"
+        prev_max = m
+    return None
 
 
 def _add_convert_args(c: argparse.ArgumentParser) -> None:
@@ -182,6 +216,18 @@ def validate(s: dict) -> str | None:
         v = s[k]
         if not math.isfinite(v) or v <= 0:
             return f"{k} must be a positive finite number"
+    layers = s["layers"]
+    if layers is not None:
+        # layers 指定時は threshold / max_height_mm を併用しても解釈が
+        # 曖昧 (どちらの高さに従うか) なので、threshold は排他。
+        # max_height_mm は default 値があり常に存在するため、CLI/JSON で
+        # 明示指定されたかを区別できないので排他にはしない (layers 側が
+        # 単純に勝つ)。
+        if s["threshold"] is not None:
+            return "layers と threshold は同時指定できません (どちらか片方にしてください)"
+        err = _validate_layers(layers)
+        if err:
+            return err
     return None
 
 
@@ -209,6 +255,7 @@ def cmd_convert(args: argparse.Namespace) -> int:
         invert=settings["invert"],
         threshold=settings["threshold"],
         max_height_mm=settings["max_height_mm"],
+        layers=settings["layers"],
     )
     mesh = heightmap_to_mesh(
         heights,

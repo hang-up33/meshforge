@@ -163,9 +163,38 @@
   - `README.md` から CONTRIBUTING / CHANGELOG / Demo URL に辿れる
   - `CHANGELOG.md` に Step 1〜9 が `0.1.0` として記載されている
 
-### Step 11 以降 (構想のみ、ここでは確定しない)
+### Step 11: 編集可能 3D の最初の一歩 — 高さレイヤー（マルチバンド閾値）
+- **判断**: 「編集可能 3D」のビジョン（壁高さ・要素ごとの高さなどを
+  パラメータで持つ中間モデル）に向けた最小の一歩として、ピクセル明度を
+  複数バンドに分割しバンドごとに独立した高さを JSON で指定可能にする。
+  これだけで「外壁 10mm / 内壁 5mm / 開口 0mm」のような階層を 1 枚の
+  画像から取り出せ、「JSON を編集して再生成する」体験の最小実例ができる。
+- **作るもの**:
+  - `to_heights` に `layers: list[dict] | None` を追加。`np.digitize` で
+    バンド判定 → バンドの `height_mm` を返す（`invert` は前処理として併用、
+    `threshold` / `max_height_mm` は無視）
+  - `cli.py` の JSON 設定に `layers` キーを追加。型・昇順を検証し、
+    `threshold` との同時指定はエラー
+  - `samples/multilayer.json`: `samples/dome.png` を入力にする 4 バンド例
+- **使うライブラリ**: 既存（追加なし）
+- **やらないこと**:
+  - Streamlit UI のフォーム編集（プリセット 1 個に layers を埋め込むのも
+    しない。UI 拡張は次 Step で別判断）
+  - CLI から `--layers` 等の直接フラグ（JSON 経由のみ）
+  - 領域単位（矩形・マスク・要素マップ）の高さ指定
+  - 押出方向の変更 / 開口部・穴の明示指定
+  - バンド境界の連続補間（階段関数のまま）
+  - 複数ページ PDF 対応
+- **完了条件**:
+  - `python -m meshforge convert --config samples/multilayer.json` で
+    階段状の STL（複数の Z 平坦面）が出る
+  - 既存サンプル（`layers` キーなし）の出力 STL は Step 10 とバイト一致
+  - `layers` と `threshold` の同時指定は `config error` で exit 1
+
+### Step 12 以降 (構想のみ、ここでは確定しない)
+- マルチバンド UI 編集（Streamlit に layers フォームを追加）
 - 複数入力対応（複数ページ PDF / 複数 PNG）
-- 編集可能 3D の最初の一歩
+- 領域単位（矩形 / マスク）の高さ編集
 - デモ GIF の作成と差し込み
 
 ## 各ステップの「やらないこと」リスト (重要)
@@ -184,6 +213,7 @@
 | Step 8 | プリセット追加 UI・JSON 保存・`pixel_mm`/`dpi` のプリセット化・CLI 展開 |
 | Step 9 | CLI 側のエラー整理・多言語化・magic-byte 検証・自動ダウンサンプリング |
 | Step 10 | GitHub Actions release・PyPI 公開・バージョニング自動化・多言語ドキュメント・GIF 自体の生成・CI/lint/test 基盤 |
+| Step 11 | UI フォーム編集・CLI 直接フラグ・領域単位編集・押出方向変更・開口部指定・バンド境界の連続補間・複数ページ PDF |
 
 ## 着手判断
 

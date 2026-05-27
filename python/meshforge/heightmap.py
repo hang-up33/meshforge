@@ -29,12 +29,21 @@ def to_heights(
     invert: bool,
     threshold: int | None,
     max_height_mm: float,
+    layers: list[dict] | None = None,
 ) -> np.ndarray:
     # Keep this arithmetic identical to the pre-Step-5 single-file script so
     # the same input produces a byte-identical binary STL after refactor.
     arr = np.array(image, dtype=np.float32)
     if invert:
         arr = 255.0 - arr
+    if layers is not None:
+        # Step 11: 多段階の高さレイヤー。 `max` の昇順に並んだ閾値で
+        # 明度をバンド分けし、バンドごとに固定高を返す。bins の右端は
+        # 含まないので、最後のバンドが 255 を覆うよう index を clip する。
+        bins = np.asarray([L["max"] for L in layers], dtype=np.float32)
+        band_h = np.asarray([L["height_mm"] for L in layers], dtype=np.float32)
+        idx = np.clip(np.digitize(arr, bins), 0, len(layers) - 1)
+        return band_h[idx]
     if threshold is not None:
         arr = np.where(arr >= threshold, 255.0, 0.0)
     return arr / 255.0 * max_height_mm
