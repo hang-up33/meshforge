@@ -40,8 +40,9 @@ meshforge は「PDF（仕様書 / 図面）→ 編集可能な 3D モデル → 
 6. レビューが落ち着くまで 3〜5 を繰り返し → 承認 → マージ
 
 スラッシュコマンド:
-- `/codex-review` — 現在ブランチを Codex にレビューさせる
-- `/apply-pr-feedback` — PR コメント / レビューファイルを読んで修正案を出す
+- `/codex-review` — 現在ブランチを Codex にレビューさせる（ローカル）
+- `/apply-pr-feedback` — PR コメント / レビューファイルを読んで修正案を出す（1 ラウンド）
+- `/codex-loop` — `gh pr create` 直後に呼ぶ自走ループ。`@codex review` 投稿 → ポーリング → 反映 → 再依頼 を Codex がクリーン文言を返すまで繰り返す（参考: [hmi-platform codex-pr 手順 7](https://github.com/hang-up33/hmi-platform/blob/main/.claude/skills/codex-pr/SKILL.md)）
 
 ## 環境
 
