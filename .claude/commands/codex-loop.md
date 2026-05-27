@@ -58,7 +58,12 @@ gh pr comment "$PR" --body "@codex review"
 **直後に基準値を確定**（待機後に取ると、待機中に Codex が投稿したクリーン文言を `?since=` で除外してしまい「シグナルなし」と誤判定して 30 分無反応扱いになる）:
 
 ```sh
-SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+# 実時刻を「1 秒戻して」確定する。GitHub の `?since=` 実装は境界時刻ちょうどの
+# イベントを取りこぼすケースがあり、@codex review 投稿と同一秒に Codex の自動
+# 応答が記録されると拾えない。1 秒戻し + クライアント側 select(.created_at >= SINCE)
+# の二重防御で取りこぼしを防ぐ。macOS / Linux の date コマンド差を吸収。
+SINCE=$(date -u -v-1S +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+    || date -u -d '1 second ago' +%Y-%m-%dT%H:%M:%SZ)
 HEAD_SHA=$(git rev-parse HEAD)
 ```
 
@@ -88,6 +93,9 @@ gh api --paginate "repos/$REPO/pulls/$PR/comments" \
 #     reviews API にクリーン文言が載らないラウンドがあるため必ず併せて見る。
 #     **commit_id を持たないので必ず時刻で絞る**。過去ラウンドのクリーン文言を
 #     拾うと、最新 HEAD のレビュー未完了でもループ誤終了する。
+#     `?since=` は GitHub 側で境界取りこぼしがあるため、SINCE は手順 2 で 1 秒
+#     戻した値を使い、サーバー側 `?since=` + クライアント側 `select(.created_at >= SINCE)`
+#     の二重防御で確実に拾う。
 gh api --paginate "repos/$REPO/issues/$PR/comments?since=${SINCE}" \
   --jq ".[] | select(.user.login == \"chatgpt-codex-connector[bot]\") | select(.created_at >= \"$SINCE\") | {created_at, body}"
 ```
