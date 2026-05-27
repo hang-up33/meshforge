@@ -52,6 +52,21 @@ meshforge は「PDF（仕様書 / 図面）→ 編集可能な 3D モデル → 
 - 実行例: `.venv/bin/python -m meshforge convert samples/dome.png samples/dome.stl`
 - macOS / Homebrew Python では `pyexpat` の symbol 不一致があり、`brew install expat` 済みなら pip 用に `DYLD_LIBRARY_PATH=/opt/homebrew/opt/expat/lib` を渡す。**`python -m meshforge` の実行には不要**。
 
+## UI 変更時のスクショ運用
+
+Streamlit UI（`python/meshforge/ui_streamlit.py`）の見た目が変わる PR では、
+以下の **両方** を同じ PR に含める（片方だけ更新するとリポジトリ内画像と
+README が乖離するため）。
+
+1. **PR 本文のスクショ**: GitHub の PR description に画面キャプチャを貼る
+2. **`docs/screenshots/editor.png`**: README から参照している
+   トップ画面の画像も差し替える。撮り直し手順は
+   [`docs/screenshots/README.md`](docs/screenshots/README.md) 参照
+
+レビュー観点としても「UI 差分がある PR で `docs/screenshots/editor.png`
+の更新が抜けていないか」をチェックする。テキスト変更 / ロジック変更だけで
+見た目が変わらない場合は更新不要。
+
 ## コーディング規約
 
 - Step 5 で `python/meshforge/` パッケージに分割済。新規ロジックは適切なモジュール（heightmap / mesh / stl / cli / ui_streamlit）に置く
