@@ -146,7 +146,8 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ```sh
 git push
 gh pr comment "$PR" --body "<対応した指摘 / 保留 / 却下のサマリ>"
-gh pr comment "$PR" --body "@codex review"
+# --once 指定時は再レビューを依頼しない（引数説明と動作を合わせる）
+[ "$ONCE" = "1" ] || gh pr comment "$PR" --body "@codex review"
 ```
 
 force push は使わない（追加コミットで対応）。
