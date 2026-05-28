@@ -23,7 +23,7 @@
   "walls":     [ /* Step 12-2 */ ],
   "rooms":     [ /* Step 12-3 */ ],
   "openings":  [ /* Step 12-4 */ ],
-  "roof":     { /* Step 12-5 (flat) / Step 12-6 (gable) / Step 12-7 (hip) */ },
+  "roof":     { /* Step 12-5 (flat) / 12-6 (gable) / 12-7 (hip) / 12-8 (pyramidal) */ },
   "furniture": [ /* Step 12-9 */ ]
 }
 ```
@@ -154,7 +154,7 @@
 `samples/building_with_door.json` は 80×60 mm の最小建物 (壁厚 4 mm、4 本)
 にドア (12×16 mm) と窓 (16×8 mm、sill 10 mm) を 1 つずつ開けた例。
 
-### `roof` (Step 12-5: flat / Step 12-6: gable / Step 12-7: hip)
+### `roof` (Step 12-5: flat / 12-6: gable / 12-7: hip / 12-8: pyramidal)
 
 `kind` で枝分かれする。共通必須キーは `kind` と `polygon`。
 
@@ -181,6 +181,13 @@
   "ridge_axis": "x",                          // 棟の走る軸 = bbox の長辺方向
   "ridge_height_mm": 8.0
 }
+
+// kind = "pyramidal" (Step 12-8)
+{
+  "kind": "pyramidal",
+  "polygon": [[x,y], [x,y], [x,y], [x,y]],  // axis-aligned 正方形 (W==D) の 4 隅
+  "ridge_height_mm": 12.0                     // 頂点までの高さ (mm)
+}
 ```
 
 実装 (`python/meshforge/building/assemble.py`):
@@ -193,39 +200,41 @@
   自動推定はしない)。eaves overhang を別フィールドで持つのは Step 12-8+。
   自己交差や 0 面積は shapely の `is_valid` が拒否し、`explain_validity`
   の文字列を添えて `ValueError`。
-- `kind="gable" / "hip"`: `polygon` を axis-aligned 矩形 (4 隅) に限定。
-  点の順序は問わず、`{(xmin,ymin), (xmax,ymin), (xmax,ymax), (xmin,ymax)}` と
-  一致するかだけ見る。`ridge_axis` で棟が走る軸を指定し、6 頂点 8 面の
-  メッシュを numpy で手組みする (shapely を経由しないので追加依存なしで動く)。
-  - **gable**: 棟線は bbox の全幅 (端から端まで)。長短どちらの方向にも棟を
-    引ける。短辺側の三角形「妻」が立ち上がる。
+- `kind="gable" / "hip" / "pyramidal"`: `polygon` を axis-aligned 矩形 (4 隅)
+  に限定。点の順序は問わず、`{(xmin,ymin), (xmax,ymin), (xmax,ymax), (xmin,ymax)}`
+  と一致するかだけ見る。shapely を経由せず numpy で頂点 / 面を手組みする
+  (追加依存なしで動く)。
+  - **gable**: 棟線は bbox の全幅 (端から端まで)。`ridge_axis` で棟方向を指定。
+    短辺側の三角形「妻」が立ち上がる。6 頂点 8 面の三角柱。
   - **hip**: 棟線の両端を「短辺の半分」ぶん bbox 内側に引き込む。長辺側 2 面
     は台形、短辺側 2 面は三角形になる。`ridge_axis` 方向は **bbox の長辺と
-    厳密一致** を要求 (短辺方向に hip の棟は引けない)。正方形 footprint
-    (W==D) の pyramidal 縮退は Step 12-8+ に残す。
+    厳密一致** を要求 (短辺方向に hip の棟は引けない)。6 頂点 8 面。
+  - **pyramidal**: W==D の正方形 footprint のみ。棟が 1 点 (頂点) に縮退する
+    ため `ridge_axis` は無し。底 4 + 頂点 1 の 5 頂点・底 2 + 側面 4 の 6 面。
+    不等辺四角錐 (W≠D) は Step 12-9+ に残す。
 - 任意キー (`roof` 全体を省略してよい)。roof 無しの JSON は Step 12-4 と
   バイト一致の STL を返す。
 
 依存:
 - `kind="flat"` は shapely + mapbox_earcut が必要 (`pip install -e
   '.[building]'`、rooms と同じ extra)。
-- `kind="gable" / "hip"` は追加依存なし (numpy + trimesh のみ)。
+- `kind="gable" / "hip" / "pyramidal"` は追加依存なし (numpy + trimesh のみ)。
 
 実行例:
 
 ```bash
 .venv/bin/python -m meshforge convert \
-  --config samples/building_with_roof.json out.stl       # flat
+  --config samples/building_with_roof.json out.stl            # flat
 .venv/bin/python -m meshforge convert \
-  --config samples/building_with_gable_roof.json out.stl # gable
+  --config samples/building_with_gable_roof.json out.stl      # gable
 .venv/bin/python -m meshforge convert \
-  --config samples/building_with_hip_roof.json out.stl   # hip
+  --config samples/building_with_hip_roof.json out.stl        # hip
+.venv/bin/python -m meshforge convert \
+  --config samples/building_with_pyramidal_roof.json out.stl  # pyramidal
 ```
 
-3 サンプルはいずれも 80×60 mm の最小建物に同じ ridge_axis="x" / ridge_height
-8 mm の屋根を乗せる構成。gable と hip の違いは棟線の長さ (gable は全幅、
-hip は短辺ぶん引き込み) と妻側の面数 (gable は妻三角形 1 枚、hip は短辺
-スロープ三角形 1 枚)。
+flat / gable / hip サンプルは 80×60 mm 矩形 footprint、pyramidal サンプルは
+60×60 mm 正方形 footprint。pyramidal は W==D 限定で棟が中心の頂点 1 点。
 
 ### `furniture` (Step 12-9 で実装予定)
 
