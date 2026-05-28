@@ -171,6 +171,49 @@ def _add_convert_args(c: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_extract_walls_args(c: argparse.ArgumentParser) -> None:
+    c.add_argument("input", help="input PNG / PDF floor plan")
+    c.add_argument(
+        "-o", "--output",
+        default=None,
+        metavar="FILE",
+        help="write the building JSON here (default: stdout)",
+    )
+    c.add_argument(
+        "--dpi", type=float, default=150.0, metavar="D",
+        help="rasterize PDF input at this DPI (ignored for PNG); default 150",
+    )
+    c.add_argument(
+        "--pixel-mm", dest="pixel_mm", type=float, default=1.0, metavar="V",
+        help="mm per source pixel — emitted as scale_mm_per_px so walls.start/end "
+             "remain in image px coords; default 1.0",
+    )
+    c.add_argument(
+        "--threshold", type=int, default=128, metavar="N",
+        help="binary threshold 0..255 after grayscale + optional invert; default 128",
+    )
+    c.add_argument(
+        "--no-invert",
+        action="store_false",
+        dest="invert",
+        help="skip the brightness invert step (use when walls are drawn light on dark)",
+    )
+    c.add_argument(
+        "--min-length-mm", dest="min_length_mm", type=float, default=50.0, metavar="V",
+        help="discard line segments shorter than this in mm; default 50",
+    )
+    c.add_argument(
+        "--wall-thickness-mm", dest="wall_thickness_mm", type=float, default=150.0,
+        metavar="V",
+        help="thickness assigned to every emitted wall (mm); default 150",
+    )
+    c.add_argument(
+        "--wall-height-mm", dest="wall_height_mm", type=float, default=2400.0,
+        metavar="V",
+        help="height assigned to every emitted wall (mm); default 2400",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="meshforge",
@@ -180,6 +223,12 @@ def build_parser() -> argparse.ArgumentParser:
     convert = sub.add_parser("convert", help="convert a PNG/PDF heightmap to binary STL")
     _add_convert_args(convert)
     convert.set_defaults(handler=cmd_convert)
+    extract = sub.add_parser(
+        "extract-walls",
+        help="extract walls[] from a PNG/PDF floor plan (Step 12-11; OpenCV)",
+    )
+    _add_extract_walls_args(extract)
+    extract.set_defaults(handler=cmd_extract_walls)
     return p
 
 
@@ -347,6 +396,35 @@ def cmd_convert(args: argparse.Namespace) -> int:
     if args.save_config:
         save_config(args.save_config, settings)
         print(f"wrote {args.save_config}")
+    return 0
+
+
+def cmd_extract_walls(args: argparse.Namespace) -> int:
+    # Lazy import: opencv is in the vision extra, dam-mode users never need it.
+    from meshforge.building.extract import extract_walls
+
+    try:
+        spec = extract_walls(
+            args.input,
+            dpi=args.dpi,
+            pixel_mm=args.pixel_mm,
+            threshold=args.threshold,
+            invert=args.invert,
+            min_length_mm=args.min_length_mm,
+            wall_thickness_mm=args.wall_thickness_mm,
+            wall_height_mm=args.wall_height_mm,
+        )
+    except (OSError, ValueError, ImportError) as e:
+        print(f"extract-walls error: {e}", file=sys.stderr)
+        return 1
+
+    payload = json.dumps(spec, indent=2) + "\n"
+    if args.output:
+        with open(args.output, "w") as f:
+            f.write(payload)
+        print(f"wrote {args.output}  walls={len(spec['walls'])}", file=sys.stderr)
+    else:
+        sys.stdout.write(payload)
     return 0
 
 
