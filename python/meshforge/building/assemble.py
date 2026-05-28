@@ -1,10 +1,12 @@
-"""Entry point for `--mode building` (Step 12-2: walls, Step 12-3: floor slabs).
+"""Entry point for `--mode building` (Step 12-2: walls, Step 12-3: floor slabs,
+Step 12-4: openings).
 
 The CLI calls `run(settings)` after merging --config + CLI args. This Step
 turns each entry of the hand-written `walls[]` into a rotated box and
 concatenates them into one STL. `rooms[]` (Step 12-3, optional) adds an
-extruded floor slab per polygon. Later steps will widen the scope:
-  - Step 12-4: openings (door / window holes)
+extruded floor slab per polygon. `openings[]` (Step 12-4, optional) carves
+door / window holes out of the referenced wall via boolean difference
+(manifold3d). Later steps will widen the scope:
   - Step 12-7: drive walls from an image (OpenCV + Claude API)
   - Step 12-8+: roof / furniture
 
@@ -49,7 +51,12 @@ def run(settings: dict) -> None:
     if err:
         raise ValueError(err)
 
-    parts = [_assemble_walls(walls_spec, scale)]
+    openings_spec = spec.get("openings")
+    err = _validate_openings(openings_spec, walls_spec, scale)
+    if err:
+        raise ValueError(err)
+
+    parts = [_assemble_walls(walls_spec, openings_spec, scale)]
     if rooms_spec:
         parts.append(_assemble_rooms(rooms_spec, scale))
     mesh = parts[0] if len(parts) == 1 else trimesh.util.concatenate(parts)
@@ -120,16 +127,23 @@ def _wall_box(start, end, thickness_mm: float, height_mm: float, scale: float) -
     return box
 
 
-def _assemble_walls(walls, scale: float) -> trimesh.Trimesh:
-    boxes = [
-        _wall_box(w["start"], w["end"], w["thickness_mm"], w["height_mm"], scale)
-        for w in walls
-    ]
+def _assemble_walls(walls, openings, scale: float) -> trimesh.Trimesh:
+    # 開口を壁ごとにグルーピング。openings が無ければ boolean を一切呼ばないので
+    # 既存サンプル (building_minimal / building_with_floor) は Step 12-3 とバイト
+    # 一致のままになる。
+    by_wall: dict[int, list[dict]] = {}
+    for op in openings or ():
+        by_wall.setdefault(op["wall_index"], []).append(op)
+    boxes = []
+    for i, w in enumerate(walls):
+        wall_box = _wall_box(w["start"], w["end"], w["thickness_mm"], w["height_mm"], scale)
+        if i in by_wall:
+            wall_box = _carve_openings(wall_box, w, by_wall[i], scale)
+        boxes.append(wall_box)
     if len(boxes) == 1:
         return boxes[0]
     # 単純結合 — 角で隣接する壁は内部に重複面が残るが、FDM スライサは問題なく
-    # 処理できる。boolean union による厳密な watertight 化は開口くり抜き
-    # (Step 12-4) で manifold3d を入れる時にまとめて検討する。
+    # 処理できる。boolean union による厳密な watertight 化は将来検討。
     return trimesh.util.concatenate(boxes)
 
 
@@ -208,3 +222,123 @@ def _assemble_rooms(rooms, scale: float) -> trimesh.Trimesh:
     if len(slabs) == 1:
         return slabs[0]
     return trimesh.util.concatenate(slabs)
+
+
+# openings[] validation. 各エントリは {wall_index, offset_mm, width_mm,
+# height_mm, sill_mm?, kind} で、sill_mm は省略可 (door は常に 0、window は
+# 0 以上の任意値)。kind=door かつ sill_mm > 0 は意味的に衝突するので reject。
+# 開口同士の重なりは validate しない (Codex から指摘が来たら強化) — 重なって
+# も boolean 差は問題なく取れる。
+_OPENING_REQUIRED = {"wall_index", "offset_mm", "width_mm", "height_mm", "kind"}
+_OPENING_OPTIONAL = {"sill_mm"}
+_OPENING_KINDS = ("door", "window")
+
+
+_OPENING_EPS_MM = 1e-6
+
+
+def _wall_length_mm(wall: dict, scale: float) -> float:
+    s = np.asarray(wall["start"], dtype=np.float64) * scale
+    e = np.asarray(wall["end"], dtype=np.float64) * scale
+    return float(np.linalg.norm(e - s))
+
+
+def _validate_openings(openings, walls, scale: float) -> str | None:
+    if openings is None:
+        return None
+    if not isinstance(openings, list):
+        return f"openings must be a list, got {type(openings).__name__}"
+    # 空配列 [] は rooms と同じく「無し」扱い。スキーマ雛形互換用 (Codex P2 と
+    # 同じ理由)。
+    allowed = _OPENING_REQUIRED | _OPENING_OPTIONAL
+    n_walls = len(walls)
+    for i, op in enumerate(openings):
+        if not isinstance(op, dict):
+            return f"openings[{i}] must be an object"
+        keys = set(op)
+        missing = _OPENING_REQUIRED - keys
+        if missing:
+            return f"openings[{i}] is missing keys: {sorted(missing)}"
+        unknown = keys - allowed
+        if unknown:
+            return f"openings[{i}] has unknown keys: {sorted(unknown)}"
+        wi = op["wall_index"]
+        if not (isinstance(wi, int) and not isinstance(wi, bool)):
+            return f"openings[{i}].wall_index must be an integer, got {type(wi).__name__}"
+        if not 0 <= wi < n_walls:
+            return f"openings[{i}].wall_index {wi} out of range (walls has {n_walls} entries)"
+        for k in ("offset_mm", "width_mm", "height_mm"):
+            v = op[k]
+            if not (isinstance(v, (int, float)) and not isinstance(v, bool)):
+                return f"openings[{i}].{k} must be a number, got {type(v).__name__}"
+            if not math.isfinite(v) or v <= 0:
+                return f"openings[{i}].{k} must be a positive finite number"
+        sill = op.get("sill_mm", 0.0)
+        if not (isinstance(sill, (int, float)) and not isinstance(sill, bool)):
+            return f"openings[{i}].sill_mm must be a number, got {type(sill).__name__}"
+        if not math.isfinite(sill) or sill < 0:
+            return f"openings[{i}].sill_mm must be a non-negative finite number"
+        kind = op["kind"]
+        if kind not in _OPENING_KINDS:
+            return f"openings[{i}].kind must be one of {list(_OPENING_KINDS)}, got {kind!r}"
+        if kind == "door" and sill > 0:
+            return f"openings[{i}] is kind=door but sill_mm={sill} > 0 (door must start from floor)"
+        # 壁本体に収まるか確認。offset_mm / width_mm は常に mm なので壁長も mm に
+        # 換算して比較する (scale_mm_per_px は start/end のみに掛かる)。
+        w = walls[wi]
+        wall_len = _wall_length_mm(w, scale)
+        if op["offset_mm"] + op["width_mm"] > wall_len + _OPENING_EPS_MM:
+            return (
+                f"openings[{i}] offset_mm+width_mm ({op['offset_mm']}+{op['width_mm']}) "
+                f"exceeds wall length ({wall_len:.3f} mm) on wall {wi}"
+            )
+        if sill + op["height_mm"] > w["height_mm"] + _OPENING_EPS_MM:
+            return (
+                f"openings[{i}] sill_mm+height_mm ({sill}+{op['height_mm']}) "
+                f"exceeds wall height ({w['height_mm']} mm) on wall {wi}"
+            )
+    return None
+
+
+def _carve_openings(wall_box: trimesh.Trimesh, wall_spec: dict, openings: list[dict],
+                    scale: float) -> trimesh.Trimesh:
+    # manifold3d は openings がある壁でのみ要求する。dam モードや openings 無しの
+    # building JSON には影響しない。trimesh 4.x は manifold3d が import 可能なら
+    # 自動的にエンジンとして使う。
+    try:
+        import manifold3d  # noqa: F401
+    except ImportError as e:
+        raise ImportError(
+            "building mode with openings[] requires manifold3d. "
+            "Install with: pip install -e '.[building]'"
+        ) from e
+    cutouts = [_opening_cutout_box(wall_spec, op, scale) for op in openings]
+    if len(cutouts) == 1:
+        cutout = cutouts[0]
+    else:
+        cutout = trimesh.boolean.union(cutouts)
+    return wall_box.difference(cutout)
+
+
+def _opening_cutout_box(wall_spec: dict, opening: dict, scale: float) -> trimesh.Trimesh:
+    s = np.asarray(wall_spec["start"], dtype=np.float64) * scale
+    e = np.asarray(wall_spec["end"], dtype=np.float64) * scale
+    direction = e - s
+    length = float(np.linalg.norm(direction))
+    thickness = wall_spec["thickness_mm"]
+    wall_h = wall_spec["height_mm"]
+    w_op = opening["width_mm"]
+    h_op = opening["height_mm"]
+    sill = opening.get("sill_mm", 0.0)
+    # 壁厚を 2mm 超えた厚みで作って boolean の coplanar 面が残らないようにする
+    # (manifold3d は coplanar に強いが、安全側で逃がす)。
+    box = trimesh.creation.box(extents=[w_op, thickness + 2.0, h_op])
+    # wall-local: 壁中心を原点とし x が壁方向。
+    local_x = opening["offset_mm"] + w_op / 2.0 - length / 2.0
+    local_z = sill + h_op / 2.0 - wall_h / 2.0
+    box.apply_translation([local_x, 0.0, local_z])
+    angle = math.atan2(direction[1], direction[0])
+    box.apply_transform(trimesh.transformations.rotation_matrix(angle, [0.0, 0.0, 1.0]))
+    midpoint = (s + e) / 2.0
+    box.apply_translation([midpoint[0], midpoint[1], wall_h / 2.0])
+    return box

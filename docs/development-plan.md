@@ -211,7 +211,7 @@
   - **完了条件**: `python -m meshforge convert --config samples/building_minimal.json out.stl`
     で 4 本の壁が立った STL が出る (各 box が watertight)。既存 dam モードの
     `dome.png` 出力は md5 が変わらない (`e1a9015c...`)。
-- **Step 12-3**: `rooms[]` を JSON で受けて床スラブを足す。
+- **Step 12-3 (完了)**: `rooms[]` を JSON で受けて床スラブを足す。
   - `building/assemble.py` に `rooms` 検証 + shapely Polygon →
     `trimesh.creation.extrude_polygon` で柱状メッシュ生成 + walls とまとめて
     concat
@@ -229,9 +229,28 @@
     で 2 室分の床スラブ + 壁が出る。既存 `samples/building_minimal.json` の
     出力 STL は Step 12-2 とバイト一致 (`92487afcdafbd4ce2afa8290514e15fc`)。
     `dome.png` の dam-mode 出力も md5 が変わらない (`e1a9015cb867a476c59d3fe9018fd96c`)。
-- **Step 12-4 以降 (構想)**: 開口部 (door/window) のくり抜き / 画像→中間 JSON
-  自動生成 (OpenCV) / Claude API による意味付け / 屋根 / 家具 / Streamlit UI
-  への露出。
+- **Step 12-4**: `openings[]` (door/window) を JSON で受けて該当壁を boolean
+  でくり抜く。
+  - `building/assemble.py` に `openings` 検証 + manifold3d ベースの
+    `trimesh.difference` で壁単位にくり抜き、複数開口は `trimesh.boolean.union`
+    でまとめてから 1 回の difference をかける
+  - サンプル: `samples/building_with_door.json` (80×60 mm の最小建物にドア 1 つ
+    と窓 1 つ)
+  - 新依存: `manifold3d` を `building` extra に追加 (`pip install -e
+    '.[building]'`)。openings 無しの building JSON では import されない
+  - **やらないこと**: 開口同士の重なり検出 (boolean union が吸収する) / 開口
+    の建具モデル (枠 / ドア板 / ガラス) / `kind` ごとの色・材質メタデータ /
+    OpenCV からの開口自動抽出 / Streamlit UI への露出 / 角の boolean union
+    (壁の重複面は引き続き許容) / 開口位置から rooms の床に切り欠きを足す
+  - **完了条件**: `python -m meshforge convert --config
+    samples/building_with_door.json out.stl` で 4 本の壁にドア 1 + 窓 1 が
+    開いた watertight STL が出る。既存 `samples/building_minimal.json` /
+    `samples/building_with_floor.json` / `samples/dome.png` の md5 は変わら
+    ない (`92487afcdafbd4ce2afa8290514e15fc` / `b9743b8784a3e0bd96a524871bad941f`
+    / `e1a9015cb867a476c59d3fe9018fd96c`)。
+
+- **Step 12-5 以降 (構想)**: 画像→中間 JSON 自動生成 (OpenCV) / Claude API
+  による意味付け / 屋根 / 家具 / Streamlit UI への露出。
 
 ### Step 13 以降 (構想のみ、ここでは確定しない)
 - マルチバンド UI 編集（Streamlit に layers フォームを追加）
@@ -258,6 +277,7 @@
 | Step 11 | UI フォーム編集・CLI 直接フラグ・領域単位編集・押出方向変更・開口部指定・バンド境界の連続補間・複数ページ PDF |
 | Step 12-2 | 角の boolean union・開口部・床スラブ・屋根・家具・画像→JSON 自動生成・複数階・GLB 出力・building 用 `--save-config` |
 | Step 12-3 | 壁との boolean union・polygon holes・床ポリゴン同士の重なり検出・壁高さの自動オフセット・床のメタデータ (色/材質)・`label` をメッシュ名に焼く・自動 watertight 化・Streamlit UI 露出 |
+| Step 12-4 | 開口同士の重なり検出・建具モデル (枠/ドア板/ガラス)・`kind` 別の色/材質・OpenCV による開口自動抽出・Streamlit UI 露出・角の boolean union・rooms 床への切り欠き反映 |
 
 ## 着手判断
 
