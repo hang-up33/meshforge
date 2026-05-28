@@ -310,9 +310,12 @@ rooms / openings / roof / furniture は出さないので、抽出 → 手動で
 事前 mm 換算はしない。
 
 依存:
-- `opencv-python-headless` が必要 (`pip install -e '.[vision]'`)。dam モードや
-  手書き building JSON しか使わないユーザには課さない。building extra
-  (shapely / manifold3d) とも独立。
+- PNG 入力のみなら `opencv-python-headless` が必要
+  (`pip install -e '.[vision]'`)。
+- **PDF 入力時は `pdf` extra も併用**: `pip install -e '.[vision,pdf]'`
+  (`load_grayscale` が PyMuPDF を import するため)。
+- dam モードや手書き building JSON しか使わないユーザには課さない。building
+  extra (shapely / manifold3d) とも独立。
 
 スコープ外 (Step 12-12+):
 - 線分マージ (Hough は壁の両 edge を別線として返すので、1 px stroke の線でも
