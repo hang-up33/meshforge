@@ -21,8 +21,8 @@
   "schema_version": 1,
   "scale_mm_per_px": 1.0,         // 元画像 1px が何 mm に相当するか (省略時 1.0)
   "walls":     [ /* Step 12-2 */ ],
-  "openings":  [ /* Step 12-3 */ ],
-  "rooms":     [ /* Step 12-4 */ ],
+  "rooms":     [ /* Step 12-3 */ ],
+  "openings":  [ /* Step 12-4 */ ],
   "roof":     { /* Step 12-8 */ },
   "furniture": [ /* Step 12-9 */ ]
 }
@@ -69,7 +69,44 @@
 `samples/building_minimal.json` は 80 mm × 60 mm × 24 mm のミニ建物 (壁厚
 4 mm、4 本) で、印刷可能なサイズの最小例として置いている。
 
-### `openings` (Step 12-3 で実装予定)
+### `rooms` (Step 12-3 で実装)
+
+```jsonc
+{
+  "polygon": [[x,y], [x,y], ...],   // 部屋の床ポリゴン (mm)
+  "label":   "LDK",                 // 任意の名称 (省略可)
+  "floor_thickness_mm": 100.0
+}
+```
+
+実装 (`python/meshforge/building/assemble.py`):
+- `polygon` を shapely Polygon にして `trimesh.creation.extrude_polygon`
+  で z=0..floor_thickness_mm の柱状メッシュにする。壁の z=0..height_mm と
+  z 範囲がオーバーラップするので、壁基部の内部に床面が埋まる形になる。
+  walls 同士の角と同じく boolean union はしない (スライサが塗り潰す)。
+- `label` はメッシュには焼かない。Step 12-9 (家具配置) で room_index 経由の
+  目印として参照する想定で残してある。
+- 凸でも凹でもよい (L 字・コの字 OK)。穴 (holes) には未対応。
+- 自己交差や 0 面積は shapely の `is_valid` が拒否し、
+  `explain_validity` の文字列を添えて `ValueError` を返す。
+- 任意キー (`rooms` 全体を省略してよい)。walls だけの JSON は Step 12-2 と
+  完全に同じ出力 (md5 一致) を返す。
+
+依存:
+- shapely + mapbox_earcut が必要 (`pip install -e '.[building]'`)。
+  dam モードしか触らないユーザには課さない。
+
+実行例:
+
+```bash
+.venv/bin/python -m meshforge convert \
+  --config samples/building_with_floor.json out.stl
+```
+
+`samples/building_with_floor.json` は 80×60 mm の外周壁を 1 本の内壁で
+2 部屋に区切り、各部屋に厚さ 2 mm の床スラブを敷いた最小例。
+
+### `openings` (Step 12-4 で実装予定)
 
 ```jsonc
 {
@@ -79,16 +116,6 @@
   "height_mm":  2000.0,     // ドアは床から、窓は sill_mm 起点
   "sill_mm":    0.0,        // 窓台高さ (ドアは 0)
   "kind": "door"            // "door" | "window"
-}
-```
-
-### `rooms` (Step 12-4 で実装予定)
-
-```jsonc
-{
-  "polygon": [[x,y], [x,y], ...],   // 部屋の床ポリゴン (mm)
-  "label":   "LDK",                 // 任意の名称
-  "floor_thickness_mm": 100.0
 }
 ```
 

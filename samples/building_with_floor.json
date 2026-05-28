@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "scale_mm_per_px": 1.0,
+  "walls": [
+    {"start": [0,   0],  "end": [80,  0],  "thickness_mm": 4.0, "height_mm": 24.0},
+    {"start": [80,  0],  "end": [80,  60], "thickness_mm": 4.0, "height_mm": 24.0},
+    {"start": [80,  60], "end": [0,   60], "thickness_mm": 4.0, "height_mm": 24.0},
+    {"start": [0,   60], "end": [0,   0],  "thickness_mm": 4.0, "height_mm": 24.0},
+    {"start": [40,  4],  "end": [40,  56], "thickness_mm": 3.0, "height_mm": 24.0}
+  ],
+  "rooms": [
+    {"polygon": [[2, 2], [38, 2], [38, 58], [2, 58]], "label": "LDK",   "floor_thickness_mm": 2.0},
+    {"polygon": [[42, 2], [78, 2], [78, 58], [42, 58]], "label": "Bed", "floor_thickness_mm": 2.0}
+  ]
+}
