@@ -1,16 +1,17 @@
 """Entry point for `--mode building` (Step 12-2: walls, Step 12-3: floor slabs,
-Step 12-4: openings, Step 12-5: flat roof).
+Step 12-4: openings, Step 12-5: flat roof, Step 12-6: gable roof).
 
 The CLI calls `run(settings)` after merging --config + CLI args. This Step
 turns each entry of the hand-written `walls[]` into a rotated box and
 concatenates them into one STL. `rooms[]` (Step 12-3, optional) adds an
 extruded floor slab per polygon. `openings[]` (Step 12-4, optional) carves
 door / window holes out of the referenced wall via boolean difference
-(manifold3d). `roof` (Step 12-5, optional) extrudes a flat slab from an
-explicit polygon and lifts it to sit on top of the tallest wall. Later steps
-will widen the scope:
-  - Step 12-7: drive walls from an image (OpenCV + Claude API)
-  - Step 12-8+: gable / hip roof, eaves overhang, furniture
+(manifold3d). `roof` (Step 12-5/12-6, optional) sits on top of the tallest
+wall — `kind="flat"` extrudes a polygon, `kind="gable"` builds a triangular
+prism from an axis-aligned rectangle + ridge_axis. Later steps will widen
+the scope:
+  - Step 12-7: hip roof / eaves overhang / arbitrary-polygon gable
+  - Step 12-8+: furniture / image → JSON via OpenCV + Claude API
 
 Coordinate convention (kept simple for hand-written JSON):
   - `start` / `end` are 2D points in the source coordinate system. The
@@ -329,11 +330,14 @@ def _carve_openings(wall_box: trimesh.Trimesh, wall_spec: dict, openings: list[d
     return wall_box.difference(cutout)
 
 
-# roof は当面 flat のみ。polygon は明示指定で、rooms / walls からの自動推定は
-# しない (壁の少し外側に屋根を出したいケースを別フィールドではなく polygon の
-# 書き換えで吸収できる)。gable / hip / eaves_overhang は Step 12-6+。
-_ROOF_REQUIRED = {"kind", "polygon", "thickness_mm"}
-_ROOF_KINDS = ("flat",)
+# roof は kind ごとに必須キーが分かれる: flat は thickness_mm、gable は
+# ridge_axis + ridge_height_mm。polygon は明示指定のみ (rooms / walls からの
+# 自動推定はしない)。eaves_overhang / hip / 任意ポリゴンの gable は Step 12-7+。
+_ROOF_KINDS = ("flat", "gable")
+_ROOF_COMMON_REQUIRED = {"kind", "polygon"}
+_ROOF_FLAT_EXTRA = {"thickness_mm"}
+_ROOF_GABLE_EXTRA = {"ridge_axis", "ridge_height_mm"}
+_GABLE_AXES = ("x", "y")
 
 
 def _validate_roof(roof) -> str | None:
@@ -342,18 +346,22 @@ def _validate_roof(roof) -> str | None:
     if not isinstance(roof, dict):
         return f"roof must be an object, got {type(roof).__name__}"
     keys = set(roof)
-    missing = _ROOF_REQUIRED - keys
-    if missing:
-        return f"roof is missing keys: {sorted(missing)}"
-    unknown = keys - _ROOF_REQUIRED
-    if unknown:
-        return f"roof has unknown keys: {sorted(unknown)}"
+    missing_common = _ROOF_COMMON_REQUIRED - keys
+    if missing_common:
+        return f"roof is missing keys: {sorted(missing_common)}"
     kind = roof["kind"]
     if kind not in _ROOF_KINDS:
-        return (
-            f"roof.kind must be one of {list(_ROOF_KINDS)} (gable/hip は Step 12-6+ 予定), "
-            f"got {kind!r}"
-        )
+        return f"roof.kind must be one of {list(_ROOF_KINDS)}, got {kind!r}"
+    if kind == "flat":
+        required = _ROOF_COMMON_REQUIRED | _ROOF_FLAT_EXTRA
+    else:  # gable
+        required = _ROOF_COMMON_REQUIRED | _ROOF_GABLE_EXTRA
+    missing = required - keys
+    if missing:
+        return f"roof (kind={kind!r}) is missing keys: {sorted(missing)}"
+    unknown = keys - required
+    if unknown:
+        return f"roof (kind={kind!r}) has unknown keys: {sorted(unknown)}"
     poly = roof["polygon"]
     if not isinstance(poly, list):
         return "roof.polygon must be a list of [x, y] points"
@@ -367,15 +375,47 @@ def _validate_roof(roof) -> str | None:
                 return f"roof.polygon[{j}] must contain numbers, got {type(c).__name__}"
             if not math.isfinite(c):
                 return f"roof.polygon[{j}] must contain finite numbers"
-    t = roof["thickness_mm"]
-    if not (isinstance(t, (int, float)) and not isinstance(t, bool)):
-        return f"roof.thickness_mm must be a number, got {type(t).__name__}"
-    if not math.isfinite(t) or t <= 0:
-        return "roof.thickness_mm must be a positive finite number"
+    if kind == "flat":
+        t = roof["thickness_mm"]
+        if not (isinstance(t, (int, float)) and not isinstance(t, bool)):
+            return f"roof.thickness_mm must be a number, got {type(t).__name__}"
+        if not math.isfinite(t) or t <= 0:
+            return "roof.thickness_mm must be a positive finite number"
+    else:  # gable
+        # Step 12-6 では gable の polygon を axis-aligned 矩形 (4 隅) に限定。
+        # 任意ポリゴン (L 字など) の gable は ridge を 1 本に決められないので
+        # Step 12-7+ に残す。点の順序は問わず、4 隅と一致するかだけ見る。
+        if len(poly) != 4:
+            return "roof.polygon must have exactly 4 points for kind='gable' (axis-aligned rectangle)"
+        xs = sorted({float(p[0]) for p in poly})
+        ys = sorted({float(p[1]) for p in poly})
+        if len(xs) != 2 or len(ys) != 2:
+            return "roof.polygon must form an axis-aligned rectangle for kind='gable' (need 2 unique x and 2 unique y values)"
+        expected_corners = {(xs[0], ys[0]), (xs[1], ys[0]), (xs[1], ys[1]), (xs[0], ys[1])}
+        actual_corners = {(float(p[0]), float(p[1])) for p in poly}
+        if expected_corners != actual_corners:
+            return "roof.polygon must form an axis-aligned rectangle for kind='gable' (4 corners of the bbox)"
+        axis = roof["ridge_axis"]
+        if axis not in _GABLE_AXES:
+            return f"roof.ridge_axis must be one of {list(_GABLE_AXES)}, got {axis!r}"
+        h = roof["ridge_height_mm"]
+        if not (isinstance(h, (int, float)) and not isinstance(h, bool)):
+            return f"roof.ridge_height_mm must be a number, got {type(h).__name__}"
+        if not math.isfinite(h) or h <= 0:
+            return "roof.ridge_height_mm must be a positive finite number"
     return None
 
 
 def _assemble_roof(roof, walls, scale: float) -> trimesh.Trimesh:
+    kind = roof["kind"]
+    if kind == "flat":
+        return _assemble_flat_roof(roof, walls, scale)
+    if kind == "gable":
+        return _assemble_gable_roof(roof, walls, scale)
+    raise AssertionError(f"unreachable roof.kind: {kind!r}")
+
+
+def _assemble_flat_roof(roof, walls, scale: float) -> trimesh.Trimesh:
     # shapely / mapbox_earcut は rooms と同じ building extra に乗っている。
     # rooms 無し + roof 有りの JSON でも extra が必要なので、ここで同じ案内を
     # 出す (rooms の _room_slab と同じ ImportError メッセージ)。
@@ -394,11 +434,60 @@ def _assemble_roof(roof, walls, scale: float) -> trimesh.Trimesh:
         raise ValueError(f"invalid roof polygon: {explain_validity(shape)}")
     slab = extrude_polygon(shape, height=roof["thickness_mm"])
     # 屋根は最も高い壁の天端に乗せる。壁ごとに高さが違うと低い壁の上に空気層が
-    # できるが、Step 12-5 では「flat な天井板を 1 枚」までで止める (勾配は Step
-    # 12-6+ の gable/hip と一緒に扱う)。
+    # できるが、Step 12-5/12-6 では「上に 1 枚乗せる」までで止める。
     elevation = max(float(w["height_mm"]) for w in walls)
     slab.apply_translation([0.0, 0.0, elevation])
     return slab
+
+
+def _assemble_gable_roof(roof, walls, scale: float) -> trimesh.Trimesh:
+    # axis-aligned 矩形 + 棟線で 6 頂点 8 面の三角柱を手組み。shapely 不要 (検証
+    # は _validate_roof で済)。flat と違って依存追加なしで gable 単体 JSON が
+    # 動く。
+    poly = [(float(x) * scale, float(y) * scale) for x, y in roof["polygon"]]
+    xs = sorted({p[0] for p in poly})
+    ys = sorted({p[1] for p in poly})
+    xmin, xmax = xs
+    ymin, ymax = ys
+    elevation = max(float(w["height_mm"]) for w in walls)
+    ridge_top = elevation + float(roof["ridge_height_mm"])
+    if roof["ridge_axis"] == "x":
+        # 棟は x 方向に走る。断面三角形は y-z 平面。
+        ymid = (ymin + ymax) / 2.0
+        vertices = np.array([
+            [xmin, ymin, elevation],    # 0 base front-left
+            [xmax, ymin, elevation],    # 1 base front-right
+            [xmax, ymax, elevation],    # 2 base back-right
+            [xmin, ymax, elevation],    # 3 base back-left
+            [xmin, ymid, ridge_top],    # 4 ridge left endpoint
+            [xmax, ymid, ridge_top],    # 5 ridge right endpoint
+        ], dtype=np.float64)
+        faces = np.array([
+            [0, 3, 2], [0, 2, 1],       # bottom (outward -z)
+            [0, 1, 5], [0, 5, 4],       # -y slope (front)
+            [2, 3, 4], [2, 4, 5],       # +y slope (back)
+            [0, 4, 3],                  # -x gable end
+            [1, 2, 5],                  # +x gable end
+        ], dtype=np.int64)
+    else:
+        # 棟は y 方向に走る。断面三角形は x-z 平面。
+        xmid = (xmin + xmax) / 2.0
+        vertices = np.array([
+            [xmin, ymin, elevation],    # 0
+            [xmax, ymin, elevation],    # 1
+            [xmax, ymax, elevation],    # 2
+            [xmin, ymax, elevation],    # 3
+            [xmid, ymin, ridge_top],    # 4 ridge front endpoint
+            [xmid, ymax, ridge_top],    # 5 ridge back endpoint
+        ], dtype=np.float64)
+        faces = np.array([
+            [0, 3, 2], [0, 2, 1],       # bottom
+            [0, 4, 5], [0, 5, 3],       # -x slope
+            [1, 2, 5], [1, 5, 4],       # +x slope
+            [0, 1, 4],                  # -y gable end
+            [3, 5, 2],                  # +y gable end
+        ], dtype=np.int64)
+    return trimesh.Trimesh(vertices=vertices, faces=faces, process=True)
 
 
 def _opening_cutout_box(wall_spec: dict, opening: dict, scale: float) -> trimesh.Trimesh:
