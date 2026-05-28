@@ -146,8 +146,8 @@ def _validate_rooms(rooms) -> str | None:
         return None
     if not isinstance(rooms, list):
         return f"rooms must be a list, got {type(rooms).__name__}"
-    if not rooms:
-        return "rooms must be a non-empty list when present (omit the key for no floors)"
+    # 空配列 [] は「キー省略」と同じく床なしとして扱う。スキーマ雛形や JSON
+    # 生成ツールが rooms を空で残すケースを壊さないため (Codex P2 対応)。
     allowed = _ROOM_REQUIRED | _ROOM_OPTIONAL
     for i, r in enumerate(rooms):
         if not isinstance(r, dict):
