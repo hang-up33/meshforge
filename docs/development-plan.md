@@ -391,10 +391,38 @@
     `910cdc762cfe63ca3234bbd0f6eeba4e` /
     `e1a9015cb867a476c59d3fe9018fd96c`)。
 
-- **Step 12-10 以降 (構想)**: 不等辺四角錐 / mansard / eaves overhang・
+- **Step 12-10**: Streamlit UI に building モードを露出。既存 dam の UI を
+  `st.tabs` で「Heightmap (dam)」「Building」の 2 タブに分け、Building タブで
+  中間 JSON ファイルアップロード → STL ダウンロード + 3D プレビューができる
+  ようにする。
+  - `building/assemble.py` で `run()` から `build_mesh(spec) -> trimesh.Trimesh`
+    を抽出 (検証 + 組み立てのみ、ファイル I/O を除く)。CLI と UI の両方が
+    同じ関数を呼ぶので md5 完全一致が自動的に成立する
+  - `ui_streamlit.py`: `_render_dam_tab` / `_render_building_tab` の 2 関数に
+    分け、`st.tabs(["Heightmap (dam)", "Building"])` で切替。dam タブは
+    Step 6〜9 と挙動・widget 配置を維持
+  - Building タブの動作: `st.file_uploader` で `.json` 受付 → `json.loads`
+    → `schema_version == 1` 検証 → `build_mesh(spec)` 呼び出し →
+    `serialize(mesh)` → `streamlit_stl.stl_from_text` プレビュー +
+    `st.download_button` でダウンロード
+  - エラー時は `st.error` で日本語メッセージ (JSON パース失敗 / schema_version
+    不一致 / building validation エラー / 依存パッケージ不在)
+  - `docs/screenshots/editor.png` を 2 タブ表示に差し替え (AGENTS.md の
+    「UI 変更時のスクショ運用」)
+  - **やらないこと**: building JSON のフォーム編集 / 生成・サンプル JSON
+    のプリセット・JSON テンプレ生成・画像 → JSON UI・複数 JSON 同時変換・
+    building 用の細かいパラメータ調整 UI・cloud デプロイ調整 (既存のまま)
+  - **完了条件**: ブラウザの Building タブから samples 直下の任意の
+    `building_*.json` をアップロードして CLI とバイト一致する STL が
+    ダウンロードできる。既存 dam タブの挙動は Step 12-9 と変わらない
+    (`samples/dome.png` の md5 `e1a9015cb867a476c59d3fe9018fd96c` 不変)。
+    9 サンプル全部 (`building_minimal` / `floor` / `door` / `roof` / `gable` /
+    `hip` / `pyramidal` / `furniture` / `dome.png`) の CLI 出力 md5 も不変
+
+- **Step 12-11 以降 (構想)**: 不等辺四角錐 / mansard / eaves overhang・
   任意ポリゴンの gable / hip・kind 別の家具形状 (cylindrical toilet 等) /
   画像→中間 JSON 自動生成 (OpenCV) / Claude API による意味付け /
-  Streamlit UI への露出。
+  Streamlit UI への building JSON 編集フォーム。
 
 ### Step 13 以降 (構想のみ、ここでは確定しない)
 - マルチバンド UI 編集（Streamlit に layers フォームを追加）
@@ -427,6 +455,7 @@
 | Step 12-7 | pyramidal (W==D)・mansard 等の他屋根形状・eaves overhang・任意ポリゴンの hip/gable・複数棟線・屋根と壁の boolean union・棟軸の自動推定・屋根の色/材質・Streamlit UI 露出 |
 | Step 12-8 | 不等辺四角錐 (W≠D)・mansard / 折屋根・eaves overhang・任意ポリゴンの gable/hip/pyramidal・複数頂点 (鞍型等)・屋根と壁の boolean union・屋根の色/材質・Streamlit UI 露出 |
 | Step 12-9 | kind 別の家具形状 (cylindrical toilet 等)・家具と壁/床の boolean union・room polygon 内 bbox 検査・家具の色/材質・家具同士の重なり検出・複数階・家具自動配置・Streamlit UI 露出 |
+| Step 12-10 | building JSON のフォーム編集/生成・サンプル JSON のプリセット・JSON テンプレ生成・画像→JSON UI・複数 JSON 同時変換・building 用の細かいパラメータ調整 UI・cloud デプロイ調整 |
 
 ## 着手判断
 
