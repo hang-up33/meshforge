@@ -358,9 +358,43 @@
     `47cc61992da754d1df8229c48527014d` /
     `e1a9015cb867a476c59d3fe9018fd96c`)。
 
-- **Step 12-9 以降 (構想)**: 不等辺四角錐 / mansard / eaves overhang・
-  任意ポリゴンの gable / hip / 画像→中間 JSON 自動生成 (OpenCV) / Claude API
-  による意味付け / 家具 / Streamlit UI への露出。
+- **Step 12-9**: `furniture[]` を中間 JSON に追加。各 entry は `room_index` で
+  `rooms[]` に紐づき、`size_mm` × `height_mm` の直方体を `position` に置く。
+  - `building/assemble.py` に `_validate_furniture` (rooms 依存検証 +
+    room_index 範囲 + kind/position/size_mm/height_mm 型検証 +
+    rotation_deg 任意) と `_assemble_furniture` (trimesh.creation.box →
+    Z 軸回転 → `floor_top + height_mm/2` に配置) を追加
+  - 家具は `rooms[i].floor_thickness_mm` ぶん上に乗せる (室ごとの床厚を
+    尊重)。room polygon 内に収まるかは validate しない (false-reject を
+    避けるため使う側の責任)
+  - `kind` は文字列必須 (任意の値)。Step 12-9 ではメッシュに影響しない
+    (全部 box)。Step 12-10+ で kind 別形状分岐の余地を残すため必須
+  - サンプル: `samples/building_with_furniture.json` (building_with_floor と
+    同じ 2 部屋 + table / sofa / bed)
+  - 依存追加なし (numpy + trimesh のみ)
+  - **やらないこと**: kind 別の形状分岐 (cylindrical toilet 等)・家具と
+    壁 / 床の boolean union・room polygon 内 bbox 検査・家具の色 / 材質・
+    家具同士の重なり検出・複数階・家具自動配置・Streamlit UI 露出
+  - **完了条件**: `python -m meshforge convert
+    --config samples/building_with_furniture.json out.stl` で 3 家具が部屋
+    内に立った watertight STL が出る。既存
+    `samples/building_minimal.json` / `samples/building_with_floor.json` /
+    `samples/building_with_door.json` / `samples/building_with_roof.json` /
+    `samples/building_with_gable_roof.json` / `samples/building_with_hip_roof.json` /
+    `samples/building_with_pyramidal_roof.json` / `samples/dome.png` の md5
+    は変わらない (`92487afcdafbd4ce2afa8290514e15fc` /
+    `b9743b8784a3e0bd96a524871bad941f` /
+    `1f5aec60d29cb9b62665b5e620557c14` /
+    `6f5a31afe777fde0b6231389849347a9` /
+    `f4d4839c86a5e8b9c722b9b870c4efdd` /
+    `47cc61992da754d1df8229c48527014d` /
+    `910cdc762cfe63ca3234bbd0f6eeba4e` /
+    `e1a9015cb867a476c59d3fe9018fd96c`)。
+
+- **Step 12-10 以降 (構想)**: 不等辺四角錐 / mansard / eaves overhang・
+  任意ポリゴンの gable / hip・kind 別の家具形状 (cylindrical toilet 等) /
+  画像→中間 JSON 自動生成 (OpenCV) / Claude API による意味付け /
+  Streamlit UI への露出。
 
 ### Step 13 以降 (構想のみ、ここでは確定しない)
 - マルチバンド UI 編集（Streamlit に layers フォームを追加）
@@ -392,6 +426,7 @@
 | Step 12-6 | hip / 寄棟・mansard 等の他屋根形状・eaves overhang・任意ポリゴンの gable (L 字/凹形)・複数棟線・屋根と壁の boolean union・棟軸の自動推定・屋根の色/材質・Streamlit UI 露出 |
 | Step 12-7 | pyramidal (W==D)・mansard 等の他屋根形状・eaves overhang・任意ポリゴンの hip/gable・複数棟線・屋根と壁の boolean union・棟軸の自動推定・屋根の色/材質・Streamlit UI 露出 |
 | Step 12-8 | 不等辺四角錐 (W≠D)・mansard / 折屋根・eaves overhang・任意ポリゴンの gable/hip/pyramidal・複数頂点 (鞍型等)・屋根と壁の boolean union・屋根の色/材質・Streamlit UI 露出 |
+| Step 12-9 | kind 別の家具形状 (cylindrical toilet 等)・家具と壁/床の boolean union・room polygon 内 bbox 検査・家具の色/材質・家具同士の重なり検出・複数階・家具自動配置・Streamlit UI 露出 |
 
 ## 着手判断
 

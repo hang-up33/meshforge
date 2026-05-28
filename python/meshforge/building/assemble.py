@@ -1,6 +1,6 @@
 """Entry point for `--mode building` (Step 12-2: walls, Step 12-3: floor slabs,
 Step 12-4: openings, Step 12-5: flat roof, Step 12-6: gable roof,
-Step 12-7: hip roof, Step 12-8: pyramidal roof).
+Step 12-7: hip roof, Step 12-8: pyramidal roof, Step 12-9: furniture).
 
 The CLI calls `run(settings)` after merging --config + CLI args. This Step
 turns each entry of the hand-written `walls[]` into a rotated box and
@@ -14,10 +14,12 @@ wall:
   - `kind="hip"`: 4-slope roof (gable に短辺方向の棟引き込み) from the same
     shape, with ridge in the long axis only
   - `kind="pyramidal"`: square footprint (W==D) で頂点 1 点・側面 4 枚の四角錐
-Later steps will widen the scope:
-  - Step 12-9: eaves overhang / arbitrary-polygon gable / 不等辺四角錐 /
-    mansard
-  - Step 12-10+: furniture / image → JSON via OpenCV + Claude API
+`furniture[]` (Step 12-9, optional) places axis-aligned boxes per room — each
+entry must reference a room_index, and the box sits on top of that room's
+floor slab. Later steps will widen the scope:
+  - Step 12-10: eaves overhang / arbitrary-polygon gable / 不等辺四角錐 /
+    mansard / kind 別の家具形状
+  - Step 12-11+: image → JSON via OpenCV + Claude API / Streamlit UI 露出
 
 Coordinate convention (kept simple for hand-written JSON):
   - `start` / `end` are 2D points in the source coordinate system. The
@@ -70,11 +72,18 @@ def run(settings: dict) -> None:
     if err:
         raise ValueError(err)
 
+    furniture_spec = spec.get("furniture")
+    err = _validate_furniture(furniture_spec, rooms_spec)
+    if err:
+        raise ValueError(err)
+
     parts = [_assemble_walls(walls_spec, openings_spec, scale)]
     if rooms_spec:
         parts.append(_assemble_rooms(rooms_spec, scale))
     if roof_spec:
         parts.append(_assemble_roof(roof_spec, walls_spec, scale))
+    if furniture_spec:
+        parts.append(_assemble_furniture(furniture_spec, rooms_spec, scale))
     mesh = parts[0] if len(parts) == 1 else trimesh.util.concatenate(parts)
     write_stl(mesh, output_path)
     print(summary(mesh, output_path))
@@ -616,6 +625,94 @@ def _assemble_pyramidal_roof(roof, walls, scale: float) -> trimesh.Trimesh:
         [3, 0, 4],                  # -x slope
     ], dtype=np.int64)
     return trimesh.Trimesh(vertices=vertices, faces=faces, process=True)
+
+
+# furniture は rooms[i] に紐づく直方体。kind は任意の文字列 (Step 12-10+ で
+# kind 別の形状分岐を入れる余地)。MVP は全部 box。room polygon 内に収まるかは
+# validate しない (任意形状の room を bbox で判定すると false-reject が出る)。
+_FURNITURE_REQUIRED = {"room_index", "kind", "position", "size_mm", "height_mm"}
+_FURNITURE_OPTIONAL = {"rotation_deg", "label"}
+
+
+def _validate_furniture(furniture, rooms) -> str | None:
+    if furniture is None:
+        return None
+    if not isinstance(furniture, list):
+        return f"furniture must be a list, got {type(furniture).__name__}"
+    if not furniture:
+        return None  # 空配列は rooms / openings と同じく「無し」扱い
+    if not rooms:
+        return "furniture requires non-empty rooms[] (家具は部屋に紐づく)"
+    n_rooms = len(rooms)
+    allowed = _FURNITURE_REQUIRED | _FURNITURE_OPTIONAL
+    for i, f in enumerate(furniture):
+        if not isinstance(f, dict):
+            return f"furniture[{i}] must be an object"
+        keys = set(f)
+        missing = _FURNITURE_REQUIRED - keys
+        if missing:
+            return f"furniture[{i}] is missing keys: {sorted(missing)}"
+        unknown = keys - allowed
+        if unknown:
+            return f"furniture[{i}] has unknown keys: {sorted(unknown)}"
+        ri = f["room_index"]
+        if not (isinstance(ri, int) and not isinstance(ri, bool)):
+            return f"furniture[{i}].room_index must be an integer, got {type(ri).__name__}"
+        if not 0 <= ri < n_rooms:
+            return f"furniture[{i}].room_index {ri} out of range (rooms has {n_rooms} entries)"
+        if not isinstance(f["kind"], str):
+            return f"furniture[{i}].kind must be a string, got {type(f['kind']).__name__}"
+        for k in ("position", "size_mm"):
+            v = f[k]
+            if not isinstance(v, list) or len(v) != 2:
+                return f"furniture[{i}].{k} must be a list of two numbers"
+            for c in v:
+                if not (isinstance(c, (int, float)) and not isinstance(c, bool)):
+                    return f"furniture[{i}].{k} must contain numbers, got {type(c).__name__}"
+                if not math.isfinite(c):
+                    return f"furniture[{i}].{k} must contain finite numbers"
+        for c in f["size_mm"]:
+            if c <= 0:
+                return f"furniture[{i}].size_mm must be positive, got {c}"
+        h = f["height_mm"]
+        if not (isinstance(h, (int, float)) and not isinstance(h, bool)):
+            return f"furniture[{i}].height_mm must be a number, got {type(h).__name__}"
+        if not math.isfinite(h) or h <= 0:
+            return f"furniture[{i}].height_mm must be a positive finite number"
+        rot = f.get("rotation_deg", 0.0)
+        if not (isinstance(rot, (int, float)) and not isinstance(rot, bool)):
+            return f"furniture[{i}].rotation_deg must be a number, got {type(rot).__name__}"
+        if not math.isfinite(rot):
+            return f"furniture[{i}].rotation_deg must be a finite number"
+        if "label" in f and not isinstance(f["label"], str):
+            return f"furniture[{i}].label must be a string, got {type(f['label']).__name__}"
+    return None
+
+
+def _assemble_furniture(furniture, rooms, scale: float) -> trimesh.Trimesh:
+    # 各家具は box。size_mm / height_mm は常に mm、position は scale 適用 (walls.start
+    # と同じ convention)。床上面 z = room.floor_thickness_mm から立ち上げ、room の
+    # 高さ違いは個別 room_index から拾う。rotation_deg は Z 軸回り。
+    boxes = []
+    for f in furniture:
+        room = rooms[f["room_index"]]
+        floor_top = float(room["floor_thickness_mm"])
+        w = float(f["size_mm"][0])
+        d = float(f["size_mm"][1])
+        h = float(f["height_mm"])
+        box = trimesh.creation.box(extents=[w, d, h])
+        rot_deg = float(f.get("rotation_deg", 0.0))
+        if rot_deg != 0.0:
+            box.apply_transform(
+                trimesh.transformations.rotation_matrix(math.radians(rot_deg), [0.0, 0.0, 1.0])
+            )
+        x = float(f["position"][0]) * scale
+        y = float(f["position"][1]) * scale
+        box.apply_translation([x, y, floor_top + h / 2.0])
+        boxes.append(box)
+    if len(boxes) == 1:
+        return boxes[0]
+    return trimesh.util.concatenate(boxes)
 
 
 def _opening_cutout_box(wall_spec: dict, opening: dict, scale: float) -> trimesh.Trimesh:

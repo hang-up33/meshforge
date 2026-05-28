@@ -236,17 +236,48 @@
 flat / gable / hip サンプルは 80×60 mm 矩形 footprint、pyramidal サンプルは
 60×60 mm 正方形 footprint。pyramidal は W==D 限定で棟が中心の頂点 1 点。
 
-### `furniture` (Step 12-9 で実装予定)
+### `furniture` (Step 12-9 で実装)
 
 ```jsonc
 {
-  "room_index": 0,             // rooms[] のインデックス
-  "kind": "bed",               // "bed"|"toilet"|"sink"|"kitchen"|"sofa"|"table"|"bath" 等
-  "position_mm": [x, y],
-  "size_mm":     [w, d],
-  "rotation_deg": 0
+  "room_index": 0,                  // rooms[] のインデックス (必須)
+  "kind": "bed",                    // 任意の文字列 (必須、Step 12-10+ で形状分岐の余地)
+  "position": [x, y],               // 2D 位置 (mm = position × scale_mm_per_px)
+  "size_mm":  [width_mm, depth_mm], // 平面サイズ (常に mm、scale 非適用)
+  "height_mm": 4.0,                 // 家具の高さ (常に mm)
+  "rotation_deg": 0,                // 任意。Z 軸回り回転 (デフォルト 0)
+  "label": "dining"                 // 任意。表示用メタデータ
 }
 ```
+
+実装 (`python/meshforge/building/assemble.py`):
+- 各家具は `trimesh.creation.box(extents=[size_mm[0], size_mm[1], height_mm])`
+  で直方体を作り、Z 軸回りに `rotation_deg` 回転、`position × scale` の XY
+  位置に `floor_top + height_mm/2` の Z で配置する。`floor_top` は参照先
+  `rooms[room_index].floor_thickness_mm` (室ごとに違う床厚を尊重)。
+- `kind` は Step 12-9 では **メッシュ生成に影響しない** (全部 box)。Step 12-10+
+  で kind 別に形状分岐 (cylindrical toilet, sofa back rest 等) する余地を
+  残すため必須キーにしている。
+- `room polygon 内に収まるかは validate しない` (任意形状の room を bbox で
+  判定すると false-reject が出るため、配置は使う側の責任)。
+- `furniture` キー全体を省略するか空配列 `[]` で渡せば「家具なし」として
+  Step 12-8 までとバイト一致の STL を返す。
+- furniture が空でないのに rooms[] が無い / 空の場合は `config error` で
+  reject (家具は必ず部屋に紐づく)。
+
+依存:
+- 追加なし (numpy + trimesh のみ)。
+
+実行例:
+
+```bash
+.venv/bin/python -m meshforge convert \
+  --config samples/building_with_furniture.json out.stl
+```
+
+`samples/building_with_furniture.json` は building_with_floor と同じ
+80×60 mm + 内壁の 2 部屋構成に table / sofa / bed の 3 家具を置いた例。
+sofa は `rotation_deg: 90` で 90° 回転。
 
 ## API キー (Step 12-5 で実装予定)
 
