@@ -11,6 +11,7 @@ semantic labeling are out of scope here — the goal is just to prove the
 PNG/PDF → JSON path with one CLI invocation.
 """
 
+import math
 from typing import Any
 
 import numpy as np
@@ -41,6 +42,21 @@ def extract_walls(
     `invert=True` (デフォルト) は「黒い壁線・白い床」の建築図向け。Canny は明るい
     縁を検出するので、壁を高く=白くするためにまず反転する。
     """
+    # 入力検証。convert subcommand と同じく「正の有限数」を要求する。
+    # 特に pixel_mm <= 0 は min_length_px の除算で ZeroDivisionError になり
+    # cmd_extract_walls の except では拾えないトレースバックになる。
+    for name, value in (
+        ("dpi", dpi),
+        ("pixel_mm", pixel_mm),
+        ("min_length_mm", min_length_mm),
+        ("wall_thickness_mm", wall_thickness_mm),
+        ("wall_height_mm", wall_height_mm),
+    ):
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{name} must be a positive finite number, got {value}")
+    if not 0 <= threshold <= 255:
+        raise ValueError(f"threshold must be in 0..255, got {threshold}")
+
     try:
         import cv2
     except ImportError as e:
