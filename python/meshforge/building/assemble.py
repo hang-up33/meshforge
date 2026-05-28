@@ -1,14 +1,16 @@
 """Entry point for `--mode building` (Step 12-2: walls, Step 12-3: floor slabs,
-Step 12-4: openings).
+Step 12-4: openings, Step 12-5: flat roof).
 
 The CLI calls `run(settings)` after merging --config + CLI args. This Step
 turns each entry of the hand-written `walls[]` into a rotated box and
 concatenates them into one STL. `rooms[]` (Step 12-3, optional) adds an
 extruded floor slab per polygon. `openings[]` (Step 12-4, optional) carves
 door / window holes out of the referenced wall via boolean difference
-(manifold3d). Later steps will widen the scope:
+(manifold3d). `roof` (Step 12-5, optional) extrudes a flat slab from an
+explicit polygon and lifts it to sit on top of the tallest wall. Later steps
+will widen the scope:
   - Step 12-7: drive walls from an image (OpenCV + Claude API)
-  - Step 12-8+: roof / furniture
+  - Step 12-8+: gable / hip roof, eaves overhang, furniture
 
 Coordinate convention (kept simple for hand-written JSON):
   - `start` / `end` are 2D points in the source coordinate system. The
@@ -56,9 +58,16 @@ def run(settings: dict) -> None:
     if err:
         raise ValueError(err)
 
+    roof_spec = spec.get("roof")
+    err = _validate_roof(roof_spec)
+    if err:
+        raise ValueError(err)
+
     parts = [_assemble_walls(walls_spec, openings_spec, scale)]
     if rooms_spec:
         parts.append(_assemble_rooms(rooms_spec, scale))
+    if roof_spec:
+        parts.append(_assemble_roof(roof_spec, walls_spec, scale))
     mesh = parts[0] if len(parts) == 1 else trimesh.util.concatenate(parts)
     write_stl(mesh, output_path)
     print(summary(mesh, output_path))
@@ -318,6 +327,78 @@ def _carve_openings(wall_box: trimesh.Trimesh, wall_spec: dict, openings: list[d
     else:
         cutout = trimesh.boolean.union(cutouts)
     return wall_box.difference(cutout)
+
+
+# roof は当面 flat のみ。polygon は明示指定で、rooms / walls からの自動推定は
+# しない (壁の少し外側に屋根を出したいケースを別フィールドではなく polygon の
+# 書き換えで吸収できる)。gable / hip / eaves_overhang は Step 12-6+。
+_ROOF_REQUIRED = {"kind", "polygon", "thickness_mm"}
+_ROOF_KINDS = ("flat",)
+
+
+def _validate_roof(roof) -> str | None:
+    if roof is None:
+        return None
+    if not isinstance(roof, dict):
+        return f"roof must be an object, got {type(roof).__name__}"
+    keys = set(roof)
+    missing = _ROOF_REQUIRED - keys
+    if missing:
+        return f"roof is missing keys: {sorted(missing)}"
+    unknown = keys - _ROOF_REQUIRED
+    if unknown:
+        return f"roof has unknown keys: {sorted(unknown)}"
+    kind = roof["kind"]
+    if kind not in _ROOF_KINDS:
+        return (
+            f"roof.kind must be one of {list(_ROOF_KINDS)} (gable/hip は Step 12-6+ 予定), "
+            f"got {kind!r}"
+        )
+    poly = roof["polygon"]
+    if not isinstance(poly, list):
+        return "roof.polygon must be a list of [x, y] points"
+    if len(poly) < 3:
+        return "roof.polygon must have at least 3 points"
+    for j, pt in enumerate(poly):
+        if not isinstance(pt, list) or len(pt) != 2:
+            return f"roof.polygon[{j}] must be a [x, y] list of two numbers"
+        for c in pt:
+            if not (isinstance(c, (int, float)) and not isinstance(c, bool)):
+                return f"roof.polygon[{j}] must contain numbers, got {type(c).__name__}"
+            if not math.isfinite(c):
+                return f"roof.polygon[{j}] must contain finite numbers"
+    t = roof["thickness_mm"]
+    if not (isinstance(t, (int, float)) and not isinstance(t, bool)):
+        return f"roof.thickness_mm must be a number, got {type(t).__name__}"
+    if not math.isfinite(t) or t <= 0:
+        return "roof.thickness_mm must be a positive finite number"
+    return None
+
+
+def _assemble_roof(roof, walls, scale: float) -> trimesh.Trimesh:
+    # shapely / mapbox_earcut は rooms と同じ building extra に乗っている。
+    # rooms 無し + roof 有りの JSON でも extra が必要なので、ここで同じ案内を
+    # 出す (rooms の _room_slab と同じ ImportError メッセージ)。
+    try:
+        from shapely.geometry import Polygon
+        from trimesh.creation import extrude_polygon
+    except ImportError as e:
+        raise ImportError(
+            "building mode with roof requires shapely + mapbox_earcut. "
+            "Install with: pip install -e '.[building]'"
+        ) from e
+    coords = [(float(x) * scale, float(y) * scale) for x, y in roof["polygon"]]
+    shape = Polygon(coords)
+    if not shape.is_valid:
+        from shapely.validation import explain_validity
+        raise ValueError(f"invalid roof polygon: {explain_validity(shape)}")
+    slab = extrude_polygon(shape, height=roof["thickness_mm"])
+    # 屋根は最も高い壁の天端に乗せる。壁ごとに高さが違うと低い壁の上に空気層が
+    # できるが、Step 12-5 では「flat な天井板を 1 枚」までで止める (勾配は Step
+    # 12-6+ の gable/hip と一緒に扱う)。
+    elevation = max(float(w["height_mm"]) for w in walls)
+    slab.apply_translation([0.0, 0.0, elevation])
+    return slab
 
 
 def _opening_cutout_box(wall_spec: dict, opening: dict, scale: float) -> trimesh.Trimesh:

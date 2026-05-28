@@ -23,7 +23,7 @@
   "walls":     [ /* Step 12-2 */ ],
   "rooms":     [ /* Step 12-3 */ ],
   "openings":  [ /* Step 12-4 */ ],
-  "roof":     { /* Step 12-8 */ },
+  "roof":     { /* Step 12-5 */ },
   "furniture": [ /* Step 12-9 */ ]
 }
 ```
@@ -154,15 +154,45 @@
 `samples/building_with_door.json` は 80×60 mm の最小建物 (壁厚 4 mm、4 本)
 にドア (12×16 mm) と窓 (16×8 mm、sill 10 mm) を 1 つずつ開けた例。
 
-### `roof` (Step 12-8 で実装予定)
+### `roof` (Step 12-5 で実装)
 
 ```jsonc
 {
-  "kind": "gable",            // "gable" | "hip" | "flat"
-  "ridge_height_mm": 3500.0,
-  "eaves_overhang_mm": 300.0
+  "kind": "flat",                     // 現状 "flat" のみ。gable/hip は将来
+  "polygon": [[x,y], [x,y], ...],     // 屋根の外形 (mm、scale_mm_per_px 適用)
+  "thickness_mm": 2.0
 }
 ```
+
+実装 (`python/meshforge/building/assemble.py`):
+- `polygon` を shapely Polygon にして `trimesh.creation.extrude_polygon` で
+  柱状メッシュにし、`max(walls[].height_mm)` ぶん上に持ち上げる (壁の最大
+  高さの上に乗る平らな屋根)。
+- 屋根の z 範囲は `max(walls[].height_mm)..max(walls[].height_mm) + thickness_mm`。
+  壁天端とのオーバーラップは 0 で、内部の重複面は基本発生しない (壁ごとに
+  高さが違うと低い壁の上に空気層ができるが、それは入力 JSON の責任)。
+- 屋根 footprint は **明示指定のみ** (rooms / walls からの自動推定はしない)。
+  これで「壁の少し外側に屋根を出したい」「凹形の建物にしたい」が同じ
+  仕組みで書ける。eaves overhang を別フィールドで持つのは Step 12-6+。
+- 自己交差や 0 面積は shapely の `is_valid` が拒否し、`explain_validity`
+  の文字列を添えて `ValueError`。
+- 任意キー (`roof` 全体を省略してよい)。roof 無しの JSON は Step 12-4 と
+  バイト一致の STL を返す。
+
+依存:
+- shapely + mapbox_earcut が必要 (`pip install -e '.[building]'`)。
+  rooms と同じ extra に乗っているので追加インストールは不要。
+
+実行例:
+
+```bash
+.venv/bin/python -m meshforge convert \
+  --config samples/building_with_roof.json out.stl
+```
+
+`samples/building_with_roof.json` は 80×60 mm の最小建物 (壁厚 4 mm、4 本)
+の上に厚さ 2 mm の屋根スラブを乗せた例。屋根 footprint は壁外周と同じ
+80×60 mm にしてある。
 
 ### `furniture` (Step 12-9 で実装予定)
 
