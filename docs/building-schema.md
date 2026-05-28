@@ -106,18 +106,53 @@
 `samples/building_with_floor.json` は 80×60 mm の外周壁を 1 本の内壁で
 2 部屋に区切り、各部屋に厚さ 2 mm の床スラブを敷いた最小例。
 
-### `openings` (Step 12-4 で実装予定)
+### `openings` (Step 12-4 で実装)
 
 ```jsonc
 {
   "wall_index": 0,          // walls[] のインデックス
-  "offset_mm":  300.0,      // 壁始点からの距離
+  "offset_mm":  300.0,      // 壁始点からの距離 (mm)
   "width_mm":   900.0,
   "height_mm":  2000.0,     // ドアは床から、窓は sill_mm 起点
-  "sill_mm":    0.0,        // 窓台高さ (ドアは 0)
+  "sill_mm":    0.0,        // 窓台高さ (省略可、デフォルト 0)
   "kind": "door"            // "door" | "window"
 }
 ```
+
+実装 (`python/meshforge/building/assemble.py`):
+- `wall_index` で参照した壁の bounding box から、`offset_mm` 位置に `width_mm`
+  × 壁厚 × `height_mm` のくり抜き box を作り、`manifold3d` 経由の trimesh
+  boolean difference で差し引く。複数の開口は `trimesh.boolean.union` で
+  まとめてから 1 回の difference をかける。
+- くり抜き box の y 方向は壁厚 +2 mm にして boolean の coplanar 面を回避
+  (manifold3d は coplanar に強いが、座標誤差で薄い残骸が出るのを防ぐ安全側
+  マージン)。
+- `sill_mm` は optional。`kind=door` の場合は省略するか 0 で書く
+  (door + sill_mm > 0 は意味的に衝突するので `config error`)。
+- 検証ルール:
+  - `wall_index` は walls 範囲内の整数
+  - `offset_mm`, `width_mm`, `height_mm` は正の有限数
+  - `sill_mm` は 0 以上の有限数 (省略時 0)
+  - `kind` は `"door"` | `"window"` のみ
+  - `offset_mm + width_mm <= 壁長 (mm)` / `sill_mm + height_mm <= 壁高`
+  - 同じ壁内で開口同士が重なるケースは validate しない (boolean union が
+    そのまま吸収する)
+- `openings` キー全体を省略するか空配列 `[]` で渡せば「開口なし」として
+  Step 12-2/12-3 とバイト一致の STL を返す。
+
+依存:
+- `manifold3d` が必要 (`pip install -e '.[building]'`)。dam モードや
+  openings 無しの building JSON では import されない。
+
+実行例:
+
+```bash
+.venv/bin/python -m meshforge convert \
+  --config samples/building_with_door.json out.stl
+```
+
+`samples/building_with_door.json` は 80×60 mm の最小建物 (壁厚 4 mm、4 本)
+にドア (12×16 mm) と窓 (16×8 mm、sill 10 mm) を 1 つずつ開けた例。
 
 ### `roof` (Step 12-8 で実装予定)
 

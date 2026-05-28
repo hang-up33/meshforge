@@ -16,11 +16,12 @@ dependencies = [
 # PDF input goes through PyMuPDF. Optional so PNG-only setups stay slim.
 # Streamlit UI (Step 6) is also optional — the core CLI stays usable without it.
 # building extras pull in shapely + mapbox_earcut for floor-slab polygon
-# triangulation (Step 12-3). Dam-mode users never need them.
+# triangulation (Step 12-3) と、manifold3d for boolean difference (Step 12-4
+# openings)。dam-mode users never need them.
 [project.optional-dependencies]
 pdf = ["PyMuPDF"]
 ui = ["streamlit", "streamlit-stl"]
-building = ["shapely", "mapbox_earcut"]
+building = ["shapely", "mapbox_earcut", "manifold3d"]
 
 [tool.setuptools.packages.find]
 where = ["python"]
