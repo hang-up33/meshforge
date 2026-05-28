@@ -200,7 +200,8 @@
 
 - **Step 12-1 (完了)**: `--mode building` の骨格と中間 JSON スキーマ仕様。
   - 詳細: コミット `7bdcde9` / `1d0b568` / PR #19
-- **Step 12-2 (進行中)**: 手書き JSON の `walls[]` から壁 STL を生成。
+- **Step 12-2 (完了)**: 手書き JSON の `walls[]` から壁 STL を生成。
+  - 詳細: コミット `2714097` / PR #20
   - `building/assemble.py` で walls 検証 + trimesh で各壁を箱化 + concat
   - CLI: `convert --config building.json out.stl` の output positional 受付
   - サンプル: `samples/building_minimal.json` (80 mm × 60 mm × 24 mm の箱)
@@ -210,9 +211,27 @@
   - **完了条件**: `python -m meshforge convert --config samples/building_minimal.json out.stl`
     で 4 本の壁が立った STL が出る (各 box が watertight)。既存 dam モードの
     `dome.png` 出力は md5 が変わらない (`e1a9015c...`)。
-- **Step 12-3 以降 (構想)**: 開口部 (door/window) のくり抜き / 部屋ポリゴンの
-  床スラブ / 画像→中間 JSON 自動生成 (OpenCV) / Claude API による意味付け /
-  屋根 / 家具 / Streamlit UI への露出。
+- **Step 12-3**: `rooms[]` を JSON で受けて床スラブを足す。
+  - `building/assemble.py` に `rooms` 検証 + shapely Polygon →
+    `trimesh.creation.extrude_polygon` で柱状メッシュ生成 + walls とまとめて
+    concat
+  - 床スラブの z 範囲は 0..floor_thickness_mm。壁基部と重なる内部の重複面は
+    walls 同士の角と同じ理由で許容 (FDM スライサが塗り潰す)
+  - サンプル: `samples/building_with_floor.json` (80×60 mm を内壁 1 本で
+    2 部屋に分け、各室に厚さ 2 mm の床)
+  - 新依存: `shapely` + `mapbox_earcut` を `building` extra に分離
+    (`pip install -e '.[building]'`)。dam モードには影響しない
+  - **やらないこと**: 壁との boolean union (内部の重複面はそのまま) /
+    polygon の holes (穴) / 床ポリゴン同士の重なり検出 / 壁高さの自動オフセット
+    (床ぶん上げる調整は使う人に任せる) / 床の色・材質メタデータ / `label` を
+    メッシュ名に焼く / 自動 watertight 化 / Streamlit UI への露出
+  - **完了条件**: `python -m meshforge convert --config samples/building_with_floor.json out.stl`
+    で 2 室分の床スラブ + 壁が出る。既存 `samples/building_minimal.json` の
+    出力 STL は Step 12-2 とバイト一致 (`92487afcdafbd4ce2afa8290514e15fc`)。
+    `dome.png` の dam-mode 出力も md5 が変わらない (`e1a9015cb867a476c59d3fe9018fd96c`)。
+- **Step 12-4 以降 (構想)**: 開口部 (door/window) のくり抜き / 画像→中間 JSON
+  自動生成 (OpenCV) / Claude API による意味付け / 屋根 / 家具 / Streamlit UI
+  への露出。
 
 ### Step 13 以降 (構想のみ、ここでは確定しない)
 - マルチバンド UI 編集（Streamlit に layers フォームを追加）
@@ -238,6 +257,7 @@
 | Step 10 | GitHub Actions release・PyPI 公開・バージョニング自動化・多言語ドキュメント・GIF 自体の生成・CI/lint/test 基盤 |
 | Step 11 | UI フォーム編集・CLI 直接フラグ・領域単位編集・押出方向変更・開口部指定・バンド境界の連続補間・複数ページ PDF |
 | Step 12-2 | 角の boolean union・開口部・床スラブ・屋根・家具・画像→JSON 自動生成・複数階・GLB 出力・building 用 `--save-config` |
+| Step 12-3 | 壁との boolean union・polygon holes・床ポリゴン同士の重なり検出・壁高さの自動オフセット・床のメタデータ (色/材質)・`label` をメッシュ名に焼く・自動 watertight 化・Streamlit UI 露出 |
 
 ## 着手判断
 

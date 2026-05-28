@@ -322,7 +322,7 @@ def cmd_convert(args: argparse.Namespace) -> int:
         from meshforge.building.assemble import run as run_building
         try:
             run_building(settings)
-        except (NotImplementedError, ValueError) as e:
+        except (NotImplementedError, ValueError, ImportError) as e:
             print(f"building mode: {e}", file=sys.stderr)
             return 1
         # --save-config roundtrip は legacy SETTINGS_KEYS 用で building schema
