@@ -23,7 +23,7 @@
   "walls":     [ /* Step 12-2 */ ],
   "rooms":     [ /* Step 12-3 */ ],
   "openings":  [ /* Step 12-4 */ ],
-  "roof":     { /* Step 12-5 (flat) / Step 12-6 (gable) */ },
+  "roof":     { /* Step 12-5 (flat) / Step 12-6 (gable) / Step 12-7 (hip) */ },
   "furniture": [ /* Step 12-9 */ ]
 }
 ```
@@ -154,7 +154,7 @@
 `samples/building_with_door.json` は 80×60 mm の最小建物 (壁厚 4 mm、4 本)
 にドア (12×16 mm) と窓 (16×8 mm、sill 10 mm) を 1 つずつ開けた例。
 
-### `roof` (Step 12-5: flat / Step 12-6: gable)
+### `roof` (Step 12-5: flat / Step 12-6: gable / Step 12-7: hip)
 
 `kind` で枝分かれする。共通必須キーは `kind` と `polygon`。
 
@@ -173,31 +173,43 @@
   "ridge_axis": "x",                          // 棟の走る軸 ("x" | "y")
   "ridge_height_mm": 8.0                      // 壁天端から棟までの高さ (mm)
 }
+
+// kind = "hip" (Step 12-7)
+{
+  "kind": "hip",
+  "polygon": [[x,y], [x,y], [x,y], [x,y]],  // axis-aligned 矩形の 4 隅 (順序自由)
+  "ridge_axis": "x",                          // 棟の走る軸 = bbox の長辺方向
+  "ridge_height_mm": 8.0
+}
 ```
 
 実装 (`python/meshforge/building/assemble.py`):
-- 屋根は最も高い壁の天端 `max(walls[].height_mm)` に乗せる (どちらの kind も
-  同じ)。壁ごとに高さが違うと低い壁の上に空気層ができるが、Step 12-5/12-6
+- 屋根は最も高い壁の天端 `max(walls[].height_mm)` に乗せる (どの kind も
+  同じ)。壁ごとに高さが違うと低い壁の上に空気層ができるが、Step 12-5/12-6/12-7
   では「上に 1 枚乗せる」までで止める。
 - `kind="flat"`: `polygon` を shapely Polygon にして
   `trimesh.creation.extrude_polygon` で柱状メッシュにし、`thickness_mm`
   ぶん上に積む。屋根 footprint は **明示指定のみ** (rooms / walls からの
-  自動推定はしない)。eaves overhang を別フィールドで持つのは Step 12-7+。
+  自動推定はしない)。eaves overhang を別フィールドで持つのは Step 12-8+。
   自己交差や 0 面積は shapely の `is_valid` が拒否し、`explain_validity`
   の文字列を添えて `ValueError`。
-- `kind="gable"`: `polygon` を axis-aligned 矩形 (4 隅) に限定。点の順序は
-  問わず、`{(xmin,ymin), (xmax,ymin), (xmax,ymax), (xmin,ymax)}` と一致する
-  かだけ見る。`ridge_axis` で棟が走る軸を指定し、棟線は bbox の中央
-  (`x` 軸棟なら `y=(ymin+ymax)/2`) に引く。6 頂点 8 面の三角柱を手組みする
-  (shapely を経由しないので追加依存なしで動く)。任意ポリゴンの gable
-  (L 字平面・凹形等) と hip / 寄棟は Step 12-7+ に残す。
+- `kind="gable" / "hip"`: `polygon` を axis-aligned 矩形 (4 隅) に限定。
+  点の順序は問わず、`{(xmin,ymin), (xmax,ymin), (xmax,ymax), (xmin,ymax)}` と
+  一致するかだけ見る。`ridge_axis` で棟が走る軸を指定し、6 頂点 8 面の
+  メッシュを numpy で手組みする (shapely を経由しないので追加依存なしで動く)。
+  - **gable**: 棟線は bbox の全幅 (端から端まで)。長短どちらの方向にも棟を
+    引ける。短辺側の三角形「妻」が立ち上がる。
+  - **hip**: 棟線の両端を「短辺の半分」ぶん bbox 内側に引き込む。長辺側 2 面
+    は台形、短辺側 2 面は三角形になる。`ridge_axis` 方向は **bbox の長辺と
+    厳密一致** を要求 (短辺方向に hip の棟は引けない)。正方形 footprint
+    (W==D) の pyramidal 縮退は Step 12-8+ に残す。
 - 任意キー (`roof` 全体を省略してよい)。roof 無しの JSON は Step 12-4 と
   バイト一致の STL を返す。
 
 依存:
 - `kind="flat"` は shapely + mapbox_earcut が必要 (`pip install -e
   '.[building]'`、rooms と同じ extra)。
-- `kind="gable"` は追加依存なし (numpy + trimesh のみ)。
+- `kind="gable" / "hip"` は追加依存なし (numpy + trimesh のみ)。
 
 実行例:
 
@@ -206,11 +218,14 @@
   --config samples/building_with_roof.json out.stl       # flat
 .venv/bin/python -m meshforge convert \
   --config samples/building_with_gable_roof.json out.stl # gable
+.venv/bin/python -m meshforge convert \
+  --config samples/building_with_hip_roof.json out.stl   # hip
 ```
 
-`samples/building_with_roof.json` は flat 屋根 (厚さ 2 mm) の例、
-`samples/building_with_gable_roof.json` は同じ 80×60 mm の最小建物に棟方向
-`x` / 棟高 8 mm の gable 屋根を乗せた例。
+3 サンプルはいずれも 80×60 mm の最小建物に同じ ridge_axis="x" / ridge_height
+8 mm の屋根を乗せる構成。gable と hip の違いは棟線の長さ (gable は全幅、
+hip は短辺ぶん引き込み) と妻側の面数 (gable は妻三角形 1 枚、hip は短辺
+スロープ三角形 1 枚)。
 
 ### `furniture` (Step 12-9 で実装予定)
 

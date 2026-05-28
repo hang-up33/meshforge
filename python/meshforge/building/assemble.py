@@ -1,17 +1,21 @@
 """Entry point for `--mode building` (Step 12-2: walls, Step 12-3: floor slabs,
-Step 12-4: openings, Step 12-5: flat roof, Step 12-6: gable roof).
+Step 12-4: openings, Step 12-5: flat roof, Step 12-6: gable roof,
+Step 12-7: hip roof).
 
 The CLI calls `run(settings)` after merging --config + CLI args. This Step
 turns each entry of the hand-written `walls[]` into a rotated box and
 concatenates them into one STL. `rooms[]` (Step 12-3, optional) adds an
 extruded floor slab per polygon. `openings[]` (Step 12-4, optional) carves
 door / window holes out of the referenced wall via boolean difference
-(manifold3d). `roof` (Step 12-5/12-6, optional) sits on top of the tallest
-wall — `kind="flat"` extrudes a polygon, `kind="gable"` builds a triangular
-prism from an axis-aligned rectangle + ridge_axis. Later steps will widen
+(manifold3d). `roof` (Step 12-5/12-6/12-7, optional) sits on top of the
+tallest wall — `kind="flat"` extrudes a polygon, `kind="gable"` builds a
+triangular prism from an axis-aligned rectangle + ridge_axis, `kind="hip"`
+builds a 4-slope (寄棟) roof from the same shape with the ridge shortened
+inward by half of the shorter footprint dimension. Later steps will widen
 the scope:
-  - Step 12-7: hip roof / eaves overhang / arbitrary-polygon gable
-  - Step 12-8+: furniture / image → JSON via OpenCV + Claude API
+  - Step 12-8: eaves overhang / arbitrary-polygon gable / pyramidal
+    (W==D hip) / mansard
+  - Step 12-9+: furniture / image → JSON via OpenCV + Claude API
 
 Coordinate convention (kept simple for hand-written JSON):
   - `start` / `end` are 2D points in the source coordinate system. The
@@ -330,14 +334,16 @@ def _carve_openings(wall_box: trimesh.Trimesh, wall_spec: dict, openings: list[d
     return wall_box.difference(cutout)
 
 
-# roof は kind ごとに必須キーが分かれる: flat は thickness_mm、gable は
-# ridge_axis + ridge_height_mm。polygon は明示指定のみ (rooms / walls からの
-# 自動推定はしない)。eaves_overhang / hip / 任意ポリゴンの gable は Step 12-7+。
-_ROOF_KINDS = ("flat", "gable")
+# roof は kind ごとに必須キーが分かれる:
+#   flat: thickness_mm
+#   gable / hip: ridge_axis + ridge_height_mm
+# polygon は明示指定のみ (rooms / walls からの自動推定はしない)。
+# eaves_overhang / 任意ポリゴンの gable / pyramidal (W==D hip) は Step 12-8+。
+_ROOF_KINDS = ("flat", "gable", "hip")
 _ROOF_COMMON_REQUIRED = {"kind", "polygon"}
 _ROOF_FLAT_EXTRA = {"thickness_mm"}
-_ROOF_GABLE_EXTRA = {"ridge_axis", "ridge_height_mm"}
-_GABLE_AXES = ("x", "y")
+_ROOF_SLOPED_EXTRA = {"ridge_axis", "ridge_height_mm"}  # gable と hip で共通
+_RIDGE_AXES = ("x", "y")
 
 
 def _validate_roof(roof) -> str | None:
@@ -354,8 +360,8 @@ def _validate_roof(roof) -> str | None:
         return f"roof.kind must be one of {list(_ROOF_KINDS)}, got {kind!r}"
     if kind == "flat":
         required = _ROOF_COMMON_REQUIRED | _ROOF_FLAT_EXTRA
-    else:  # gable
-        required = _ROOF_COMMON_REQUIRED | _ROOF_GABLE_EXTRA
+    else:  # gable / hip
+        required = _ROOF_COMMON_REQUIRED | _ROOF_SLOPED_EXTRA
     missing = required - keys
     if missing:
         return f"roof (kind={kind!r}) is missing keys: {sorted(missing)}"
@@ -381,28 +387,44 @@ def _validate_roof(roof) -> str | None:
             return f"roof.thickness_mm must be a number, got {type(t).__name__}"
         if not math.isfinite(t) or t <= 0:
             return "roof.thickness_mm must be a positive finite number"
-    else:  # gable
-        # Step 12-6 では gable の polygon を axis-aligned 矩形 (4 隅) に限定。
-        # 任意ポリゴン (L 字など) の gable は ridge を 1 本に決められないので
-        # Step 12-7+ に残す。点の順序は問わず、4 隅と一致するかだけ見る。
+    else:
+        # gable / hip 共通: polygon は axis-aligned 矩形 (4 隅)。点の順序は問わず、
+        # 4 隅と一致するかだけ見る。任意ポリゴン (L 字など) の gable / hip は
+        # Step 12-8+。
         if len(poly) != 4:
-            return "roof.polygon must have exactly 4 points for kind='gable' (axis-aligned rectangle)"
+            return f"roof.polygon must have exactly 4 points for kind={kind!r} (axis-aligned rectangle)"
         xs = sorted({float(p[0]) for p in poly})
         ys = sorted({float(p[1]) for p in poly})
         if len(xs) != 2 or len(ys) != 2:
-            return "roof.polygon must form an axis-aligned rectangle for kind='gable' (need 2 unique x and 2 unique y values)"
+            return f"roof.polygon must form an axis-aligned rectangle for kind={kind!r} (need 2 unique x and 2 unique y values)"
         expected_corners = {(xs[0], ys[0]), (xs[1], ys[0]), (xs[1], ys[1]), (xs[0], ys[1])}
         actual_corners = {(float(p[0]), float(p[1])) for p in poly}
         if expected_corners != actual_corners:
-            return "roof.polygon must form an axis-aligned rectangle for kind='gable' (4 corners of the bbox)"
+            return f"roof.polygon must form an axis-aligned rectangle for kind={kind!r} (4 corners of the bbox)"
         axis = roof["ridge_axis"]
-        if axis not in _GABLE_AXES:
-            return f"roof.ridge_axis must be one of {list(_GABLE_AXES)}, got {axis!r}"
+        if axis not in _RIDGE_AXES:
+            return f"roof.ridge_axis must be one of {list(_RIDGE_AXES)}, got {axis!r}"
         h = roof["ridge_height_mm"]
         if not (isinstance(h, (int, float)) and not isinstance(h, bool)):
             return f"roof.ridge_height_mm must be a number, got {type(h).__name__}"
         if not math.isfinite(h) or h <= 0:
             return "roof.ridge_height_mm must be a positive finite number"
+        if kind == "hip":
+            # hip は bbox の長辺方向に棟が走る形を要求 (短辺方向だと棟が反転する)。
+            # W == D の正方形は棟長 0 の pyramidal に縮退するので Step 12-7 では
+            # reject (kind="pyramidal" として別 step で扱う想定)。
+            width = xs[1] - xs[0]
+            depth = ys[1] - ys[0]
+            if axis == "x" and not width > depth:
+                return (
+                    f"roof.ridge_axis='x' for kind='hip' requires the x bbox dimension "
+                    f"({width}) to be strictly greater than y ({depth}); 正方形 (pyramidal) は Step 12-8+"
+                )
+            if axis == "y" and not depth > width:
+                return (
+                    f"roof.ridge_axis='y' for kind='hip' requires the y bbox dimension "
+                    f"({depth}) to be strictly greater than x ({width}); 正方形 (pyramidal) は Step 12-8+"
+                )
     return None
 
 
@@ -412,6 +434,8 @@ def _assemble_roof(roof, walls, scale: float) -> trimesh.Trimesh:
         return _assemble_flat_roof(roof, walls, scale)
     if kind == "gable":
         return _assemble_gable_roof(roof, walls, scale)
+    if kind == "hip":
+        return _assemble_hip_roof(roof, walls, scale)
     raise AssertionError(f"unreachable roof.kind: {kind!r}")
 
 
@@ -486,6 +510,60 @@ def _assemble_gable_roof(roof, walls, scale: float) -> trimesh.Trimesh:
             [1, 2, 5], [1, 5, 4],       # +x slope
             [0, 1, 4],                  # -y gable end
             [3, 5, 2],                  # +y gable end
+        ], dtype=np.int64)
+    return trimesh.Trimesh(vertices=vertices, faces=faces, process=True)
+
+
+def _assemble_hip_roof(roof, walls, scale: float) -> trimesh.Trimesh:
+    # gable と同じ 6 頂点 8 面トポロジを使い、棟線の両端を bbox 内側に短辺の
+    # 半分ぶん引き込む (= 寄棟)。これで短辺側 2 面は三角形、長辺側 2 面は
+    # 台形になる。長辺と棟方向が一致することは _validate_roof で保証済。
+    poly = [(float(x) * scale, float(y) * scale) for x, y in roof["polygon"]]
+    xs = sorted({p[0] for p in poly})
+    ys = sorted({p[1] for p in poly})
+    xmin, xmax = xs
+    ymin, ymax = ys
+    elevation = max(float(w["height_mm"]) for w in walls)
+    ridge_top = elevation + float(roof["ridge_height_mm"])
+    if roof["ridge_axis"] == "x":
+        # 棟は x 方向に走り、両端を D/2 ぶん内側に引き込む。-y / +y 側が台形、
+        # -x / +x 側が三角形。
+        d = (ymax - ymin) / 2.0
+        ymid = (ymin + ymax) / 2.0
+        vertices = np.array([
+            [xmin, ymin, elevation],        # 0
+            [xmax, ymin, elevation],        # 1
+            [xmax, ymax, elevation],        # 2
+            [xmin, ymax, elevation],        # 3
+            [xmin + d, ymid, ridge_top],    # 4 ridge left endpoint
+            [xmax - d, ymid, ridge_top],    # 5 ridge right endpoint
+        ], dtype=np.float64)
+        faces = np.array([
+            [0, 3, 2], [0, 2, 1],           # bottom (outward -z)
+            [0, 1, 5], [0, 5, 4],           # -y slope (trapezoid)
+            [2, 3, 4], [2, 4, 5],           # +y slope (trapezoid)
+            [0, 4, 3],                      # -x slope (triangle)
+            [1, 2, 5],                      # +x slope (triangle)
+        ], dtype=np.int64)
+    else:
+        # 棟は y 方向に走り、両端を W/2 ぶん内側に引き込む。-x / +x 側が台形、
+        # -y / +y 側が三角形。
+        d = (xmax - xmin) / 2.0
+        xmid = (xmin + xmax) / 2.0
+        vertices = np.array([
+            [xmin, ymin, elevation],        # 0
+            [xmax, ymin, elevation],        # 1
+            [xmax, ymax, elevation],        # 2
+            [xmin, ymax, elevation],        # 3
+            [xmid, ymin + d, ridge_top],    # 4 ridge front endpoint
+            [xmid, ymax - d, ridge_top],    # 5 ridge back endpoint
+        ], dtype=np.float64)
+        faces = np.array([
+            [0, 3, 2], [0, 2, 1],           # bottom
+            [0, 4, 5], [0, 5, 3],           # -x slope (trapezoid)
+            [1, 2, 5], [1, 5, 4],           # +x slope (trapezoid)
+            [0, 1, 4],                      # -y slope (triangle)
+            [3, 5, 2],                      # +y slope (triangle)
         ], dtype=np.int64)
     return trimesh.Trimesh(vertices=vertices, faces=faces, process=True)
 
