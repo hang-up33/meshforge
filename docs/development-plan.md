@@ -302,9 +302,37 @@
     `6f5a31afe777fde0b6231389849347a9` /
     `e1a9015cb867a476c59d3fe9018fd96c`)。
 
-- **Step 12-7 以降 (構想)**: hip / 寄棟・eaves overhang・任意ポリゴンの
-  gable / 画像→中間 JSON 自動生成 (OpenCV) / Claude API による意味付け /
-  家具 / Streamlit UI への露出。
+- **Step 12-7**: `roof.kind` に `"hip"` (寄棟) を追加。gable と同じ
+  axis-aligned 矩形 + `ridge_axis` + `ridge_height_mm` を受け、棟線の両端を
+  bbox 内側に短辺の半分ぶん引き込む。
+  - `building/assemble.py` で gable の検証ロジックを hip と共有 (rect +
+    axis + ridge_height_mm) しつつ、hip だけ「`ridge_axis` が bbox の長辺と
+    厳密一致」を追加要求。`_assemble_hip_roof` を gable と同じ 6 頂点 8 面
+    トポロジで手組み (依存追加なし)
+  - 正方形 footprint (W==D の pyramidal 縮退) は Step 12-8+ で `"pyramidal"`
+    kind として別扱い
+  - サンプル: `samples/building_with_hip_roof.json` (80×60 mm の建物 +
+    `ridge_axis="x"` / `ridge_height_mm=8`)
+  - 依存追加なし
+  - **やらないこと**: pyramidal (W==D)・mansard・eaves overhang・任意ポリゴンの
+    hip / gable・複数棟線・屋根と壁の boolean union・棟軸の自動推定・
+    屋根の色 / 材質メタデータ・Streamlit UI 露出
+  - **完了条件**: `python -m meshforge convert
+    --config samples/building_with_hip_roof.json out.stl` で壁 4 本の上に
+    寄棟屋根が乗った watertight STL が出る。既存
+    `samples/building_minimal.json` / `samples/building_with_floor.json` /
+    `samples/building_with_door.json` / `samples/building_with_roof.json` /
+    `samples/building_with_gable_roof.json` / `samples/dome.png` の md5 は
+    変わらない (`92487afcdafbd4ce2afa8290514e15fc` /
+    `b9743b8784a3e0bd96a524871bad941f` /
+    `1f5aec60d29cb9b62665b5e620557c14` /
+    `6f5a31afe777fde0b6231389849347a9` /
+    `f4d4839c86a5e8b9c722b9b870c4efdd` /
+    `e1a9015cb867a476c59d3fe9018fd96c`)。
+
+- **Step 12-8 以降 (構想)**: pyramidal (W==D 屋根) / mansard / eaves overhang・
+  任意ポリゴンの gable / hip / 画像→中間 JSON 自動生成 (OpenCV) / Claude API
+  による意味付け / 家具 / Streamlit UI への露出。
 
 ### Step 13 以降 (構想のみ、ここでは確定しない)
 - マルチバンド UI 編集（Streamlit に layers フォームを追加）
@@ -334,6 +362,7 @@
 | Step 12-4 | 開口同士の重なり検出・建具モデル (枠/ドア板/ガラス)・`kind` 別の色/材質・OpenCV による開口自動抽出・Streamlit UI 露出・角の boolean union・rooms 床への切り欠き反映 |
 | Step 12-5 | 勾配屋根 (gable/hip)・eaves overhang・壁の高さ自動調整・rooms/walls からの footprint 自動推定・屋根と壁の boolean union・複数階屋根・屋根の色/材質・Streamlit UI 露出 |
 | Step 12-6 | hip / 寄棟・mansard 等の他屋根形状・eaves overhang・任意ポリゴンの gable (L 字/凹形)・複数棟線・屋根と壁の boolean union・棟軸の自動推定・屋根の色/材質・Streamlit UI 露出 |
+| Step 12-7 | pyramidal (W==D)・mansard 等の他屋根形状・eaves overhang・任意ポリゴンの hip/gable・複数棟線・屋根と壁の boolean union・棟軸の自動推定・屋根の色/材質・Streamlit UI 露出 |
 
 ## 着手判断
 
