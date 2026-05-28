@@ -46,7 +46,20 @@ from meshforge.stl import summary, write_stl
 def run(settings: dict) -> None:
     spec = settings["building_spec"]
     output_path = settings["output"]
+    mesh = build_mesh(spec)
+    write_stl(mesh, output_path)
+    print(summary(mesh, output_path))
 
+
+def build_mesh(spec: dict) -> trimesh.Trimesh:
+    """Validate a building intermediate JSON and assemble the mesh (no file I/O).
+
+    Used by the CLI's run() and by the Streamlit UI (Step 12-10). Raises
+    ValueError on validation failures, ImportError on missing optional deps
+    (shapely / mapbox_earcut for flat roof + rooms, manifold3d for openings).
+    schema_version 検証は呼び出し側の責務 (CLI は cli.validate で、UI は
+    フォーム submit 前に確認する)。
+    """
     scale = spec.get("scale_mm_per_px", 1.0)
     err = _validate_scale(scale)
     if err:
@@ -84,9 +97,7 @@ def run(settings: dict) -> None:
         parts.append(_assemble_roof(roof_spec, walls_spec, scale))
     if furniture_spec:
         parts.append(_assemble_furniture(furniture_spec, rooms_spec, scale))
-    mesh = parts[0] if len(parts) == 1 else trimesh.util.concatenate(parts)
-    write_stl(mesh, output_path)
-    print(summary(mesh, output_path))
+    return parts[0] if len(parts) == 1 else trimesh.util.concatenate(parts)
 
 
 def _validate_scale(scale) -> str | None:
