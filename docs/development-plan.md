@@ -249,8 +249,35 @@
     ない (`92487afcdafbd4ce2afa8290514e15fc` / `b9743b8784a3e0bd96a524871bad941f`
     / `e1a9015cb867a476c59d3fe9018fd96c`)。
 
-- **Step 12-5 以降 (構想)**: 画像→中間 JSON 自動生成 (OpenCV) / Claude API
-  による意味付け / 屋根 / 家具 / Streamlit UI への露出。
+- **Step 12-5**: `roof` (flat) を JSON で受けて壁の上に平らな屋根スラブを乗せる。
+  - `building/assemble.py` に `roof` 検証 + shapely Polygon →
+    `trimesh.creation.extrude_polygon` でスラブ生成 + `max(walls[].height_mm)`
+    ぶん上に持ち上げて concat
+  - 屋根 footprint は **明示指定の polygon のみ** (rooms / walls からの自動
+    推定はしない)。これで「壁の少し外側に屋根を出したい」「凹形の建物にしたい」
+    が同じ仕組みで書ける
+  - `kind` は当面 `"flat"` のみ。gable / hip / eaves overhang は Step 12-6+
+  - サンプル: `samples/building_with_roof.json` (80×60 mm の最小建物に
+    80×60 mm の屋根スラブを厚さ 2 mm で乗せた例)
+  - 依存追加なし (`building` extra の shapely を流用)
+  - **やらないこと**: gable / hip など勾配屋根・eaves overhang (軒の出) ・
+    壁の高さ自動調整 (壁が低い箇所は天井裏に空気層) ・rooms / walls からの
+    footprint 自動推定・屋根面と壁との boolean union・複数階の屋根・屋根の
+    色 / 材質メタデータ・Streamlit UI 露出
+  - **完了条件**: `python -m meshforge convert
+    --config samples/building_with_roof.json out.stl` で壁 4 本の上に
+    屋根スラブが乗った watertight STL が出る (md5
+    `6f5a31afe777fde0b6231389849347a9`)。既存
+    `samples/building_minimal.json` / `samples/building_with_floor.json` /
+    `samples/building_with_door.json` / `samples/dome.png` の md5 は変わら
+    ない (`92487afcdafbd4ce2afa8290514e15fc` /
+    `b9743b8784a3e0bd96a524871bad941f` /
+    `1f5aec60d29cb9b62665b5e620557c14` /
+    `e1a9015cb867a476c59d3fe9018fd96c`)。
+
+- **Step 12-6 以降 (構想)**: 勾配屋根 (gable / hip) と eaves overhang /
+  画像→中間 JSON 自動生成 (OpenCV) / Claude API による意味付け / 家具 /
+  Streamlit UI への露出。
 
 ### Step 13 以降 (構想のみ、ここでは確定しない)
 - マルチバンド UI 編集（Streamlit に layers フォームを追加）
@@ -278,6 +305,7 @@
 | Step 12-2 | 角の boolean union・開口部・床スラブ・屋根・家具・画像→JSON 自動生成・複数階・GLB 出力・building 用 `--save-config` |
 | Step 12-3 | 壁との boolean union・polygon holes・床ポリゴン同士の重なり検出・壁高さの自動オフセット・床のメタデータ (色/材質)・`label` をメッシュ名に焼く・自動 watertight 化・Streamlit UI 露出 |
 | Step 12-4 | 開口同士の重なり検出・建具モデル (枠/ドア板/ガラス)・`kind` 別の色/材質・OpenCV による開口自動抽出・Streamlit UI 露出・角の boolean union・rooms 床への切り欠き反映 |
+| Step 12-5 | 勾配屋根 (gable/hip)・eaves overhang・壁の高さ自動調整・rooms/walls からの footprint 自動推定・屋根と壁の boolean union・複数階屋根・屋根の色/材質・Streamlit UI 露出 |
 
 ## 着手判断
 
