@@ -512,11 +512,59 @@
     (building_minimal / floor / door / roof / gable / hip / pyramidal /
     furniture / dome.png) の md5 は不変
 
-- **Step 12-14 以降 (構想)**: 任意角度・斜め線分のマージ・壁厚自動検出・
+- **Step 12-14**: Streamlit UI の "Extract from image" に line overlay を追加。
+  Extract & Build 後に入力画像 + 検出された `walls[]` の中心線 (赤、2 px) を
+  `st.image` で表示し、パラメータ (threshold / min_length_mm / merge_*) の
+  試行錯誤を画像で目視確認できるようにする。
+  - `ui_streamlit.py` に `_render_extract_overlay(image_path, spec, *, dpi)` を
+    追加。`load_grayscale` で入力を再ロード → `convert("RGB")` →
+    `PIL.ImageDraw.line` で walls[] の `start`/`end` (px) を直接結ぶ
+    (walls の px 座標は extract_walls が使ったラスタライズと同じ DPI で
+    再現できるので変換不要)
+  - `_building_spec_from_image_extract` の中で extract 成功後・tmp_path
+    削除前に overlay を生成し、`st.success` 直後 + JSON download
+    button 前に `st.image(use_container_width=True)` で表示
+  - 線色は赤 `(220, 50, 50)`、太さ 2 px (axis-aligned 壁を視認しやすい固定値)
+  - 依存追加なし (`PIL.ImageDraw` は既存 `pillow` の同梱)
+  - **スクショ運用**: `editor.png` は Step 12-13 と同じく未アップロード状態
+    を写す (現行慣例を維持。Streamlit の file_uploader は React 由来の事情で
+    headless CDP からはファイルを流し込めず、UI 上に overlay が乗った状態の
+    自動撮影が成立しない)。代わりに `docs/screenshots/overlay-preview.png`
+    を新規追加し、`_render_extract_overlay` と同じ PIL ロジックで生成した
+    overlay 画像 (floor_plan_simple.png + 5 本の赤線) を README に並べて
+    載せる。再生成手順は [`docs/screenshots/README.md`](screenshots/README.md)
+    末尾のセクションに固定する
+  - **やらないこと**: 編集 UI (drag で walls を動かす / 追加 / 削除)・kind
+    別の色分け (walls に kind が無い)・壁厚を polygon で描画 (中心線 1 本で
+    十分)・rooms / openings / roof / furniture の overlay (まだ自動抽出
+    対象外)・重なり / 異常箇所のハイライト・CLI への `--overlay` 出力・
+    overlay 用パラメータ UI (色 / 線幅の widget 化)・実 UI 上の overlay
+    の自動撮影 (CDP + React の壁。手動撮影 or overlay-preview.png で代替)
+  - **完了条件**: ブラウザの Building タブで "Source = Extract from image"
+    を選び、`samples/floor_plan_simple.png` を Step 12-13 と同じ
+    pixel_mm=0.5 / wall_thickness_mm=4 / wall_height_mm=24 /
+    min_length_mm=30 で `Extract & Build` すると、`extracted walls=5` の
+    success 直後に「入力画像の上に 5 本の赤い中心線が重なった」`st.image`
+    ブロックが出る。JSON / STL ダウンロード / STL プレビューは Step 12-13
+    と同じ動作で、CLI とバイト一致する STL が出る (md5
+    `5d84a7f57f9cc4ad3bcb8fbd6c76b79d`)。既存 9 サンプル
+    (building_minimal / floor / door / roof / gable / hip / pyramidal /
+    furniture / dome.png) の CLI 出力 md5 は不変
+    (`92487afcdafbd4ce2afa8290514e15fc` /
+    `b9743b8784a3e0bd96a524871bad941f` /
+    `1f5aec60d29cb9b62665b5e620557c14` /
+    `6f5a31afe777fde0b6231389849347a9` /
+    `f4d4839c86a5e8b9c722b9b870c4efdd` /
+    `47cc61992da754d1df8229c48527014d` /
+    `910cdc762cfe63ca3234bbd0f6eeba4e` /
+    `fbfad66c3a17f9e06b144f1ccd1d7f0f` /
+    `e1a9015cb867a476c59d3fe9018fd96c`)。
+
+- **Step 12-15 以降 (構想)**: 任意角度・斜め線分のマージ・壁厚自動検出・
   rooms / openings / roof の自動抽出 (OpenCV) / Claude API による意味付け /
   不等辺四角錐 / mansard / eaves overhang・kind 別の家具形状 /
-  Streamlit UI への building JSON フォーム編集 / extract 結果のブラウザ上での
-  可視化。
+  Streamlit UI への building JSON フォーム編集・extract overlay の編集 UI 化
+  (drag で walls を動かす)・kind 別 overlay 色分け。
 
 ### Step 13 以降 (構想のみ、ここでは確定しない)
 - マルチバンド UI 編集（Streamlit に layers フォームを追加）
@@ -553,6 +601,7 @@
 | Step 12-11 | 線分マージ・壁厚/壁高の自動検出・rooms/openings/roof/furniture の自動抽出・Claude API 意味付け・複数ページ PDF・Streamlit UI 露出・抽出品質メトリクス |
 | Step 12-12 | 任意角度・斜め線分の merge・複数 cluster をまたぐ merge・rooms/openings/roof/furniture の自動抽出・Claude API 意味付け・Streamlit UI 露出 |
 | Step 12-13 | building JSON のフォーム編集・Extract パラメータプリセット・Claude API 連携・複数ページ PDF・extract 結果のセッション間保持・extract 結果のブラウザ上での可視化 (line overlay 等) |
+| Step 12-14 | 編集 UI (drag で walls を動かす / 追加)・kind 別の色分け・壁厚の polygon 描画・rooms / openings / roof / furniture の overlay・重なり / 異常箇所のハイライト・CLI への `--overlay` 出力・overlay 色 / 線幅の widget 化・実 UI 上の overlay の自動撮影 (overlay-preview.png で代替) |
 
 ## 着手判断
 
