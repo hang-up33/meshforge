@@ -1,12 +1,17 @@
 # Streamlit Community Cloud reads this file. We list dependencies directly
-# instead of `.[pdf,ui]` because uv (which Streamlit Cloud prefers for
+# instead of `.[pdf,ui,vision]` because uv (which Streamlit Cloud prefers for
 # requirements.txt) rejects local path entries, and falling back to
 # pyproject.toml triggers Poetry — which cannot find our `python/meshforge`
 # src layout. The meshforge package itself is loaded via a sys.path tweak
 # at the top of `python/meshforge/ui_streamlit.py`.
+#
+# opencv-python-headless は Step 12-13 で Building タブの "Extract from image"
+# が UI から extract_walls() を呼ぶようになったので必須。lazy import なので
+# UI 起動時には触らず、submit 時にだけロードされる。
 numpy
 pillow
 trimesh
 pymupdf
 streamlit
 streamlit-stl
+opencv-python-headless

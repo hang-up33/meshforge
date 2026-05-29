@@ -495,8 +495,9 @@
     STL preview / download
   - エラーは `extract_walls` の `ValueError` / `ImportError` を `st.error` で
     表示 (CLI と同じメッセージ)
-  - `editor.png` は dam タブを写しているので 12-13 では更新不要 (UI 変更は
-    すべて Building タブ内、bit-identical)
+  - `docs/screenshots/editor.png` を Building タブ + "Extract from image" を
+    選んだ状態に差し替え (AGENTS.md の「UI 変更時のスクショ運用」)。dam タブ
+    のフローは README 本文で別途明記
   - **やらないこと**: building JSON のフォーム編集 (手動で walls / rooms を
     UI で追加)・Extract パラメータプリセット (CLI と同じデフォルト固定)・
     Claude API 連携・複数ページ PDF 対応・extract 結果のセッション間保持・
