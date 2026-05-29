@@ -16,6 +16,11 @@ Step 12-13 で Building タブに「Source」radio を追加。"Upload JSON" は
 通りの手書き / 既存 JSON 直接読み込み、"Extract from image" は PNG/PDF を
 アップロードして `building.extract.extract_walls` を呼び中間 JSON を生成 →
 同じ `build_mesh` フローへ流す。Extract 結果の JSON は別途ダウンロード可能。
+
+Step 12-14 で "Extract from image" の結果を入力画像に重ねて表示する line
+overlay を追加。`_render_extract_overlay` が PIL で grayscale 入力を RGB
+化し、walls[] の `start`/`end` (px) を結ぶ赤線を描く。パラメータ
+(threshold / min_length_mm / merge_*) の試行錯誤を画像で確認できる。
 """
 
 import importlib.util
@@ -23,6 +28,8 @@ import json
 import sys
 import tempfile
 from pathlib import Path
+
+from PIL import Image, ImageDraw
 
 # 8 megapixel cap. A4 @ 300 DPI is ~8.7 Mpx, so anything beyond this is
 # almost certainly too large for the 1 GB RAM limit on Streamlit Cloud
@@ -362,6 +369,30 @@ def _building_spec_from_json_upload() -> tuple[dict, str] | None:
     return spec, uploaded.name
 
 
+def _render_extract_overlay(
+    image_path: str, spec: dict, *, dpi: float
+) -> Image.Image:
+    """Draw walls[] center lines on the input image, return an RGB PIL Image.
+
+    Reloads the input through `load_grayscale` so the overlay sits on exactly
+    the same px grid that `extract_walls` operated on (same DPI rasterization
+    for PDFs). walls[] の `start`/`end` は px なので、`scale_mm_per_px` を
+    通さずそのまま PIL の coordinate system に渡せる。
+    """
+    gray = load_grayscale(image_path, dpi)
+    rgb = gray.convert("RGB")
+    draw = ImageDraw.Draw(rgb)
+    for wall in spec.get("walls", []):
+        x1, y1 = wall["start"]
+        x2, y2 = wall["end"]
+        draw.line(
+            [(float(x1), float(y1)), (float(x2), float(y2))],
+            fill=(220, 50, 50),
+            width=2,
+        )
+    return rgb
+
+
 def _building_spec_from_image_extract() -> tuple[dict, str] | None:
     st.markdown(
         "PNG / PDF 平面図から `walls[]` を自動抽出して STL を生成します。"
@@ -453,6 +484,7 @@ def _building_spec_from_image_extract() -> tuple[dict, str] | None:
     suffix = Path(uploaded.name).suffix.lower() or ".png"
     tmp_path: str | None = None
     spec: dict | None = None
+    overlay_image: Image.Image | None = None
     try:
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp.write(uploaded.getvalue())
@@ -492,12 +524,22 @@ def _building_spec_from_image_extract() -> tuple[dict, str] | None:
                     f"({type(e).__name__}: {e})。サポート形式は PNG / PDF です。"
                 )
                 return None
+        # Step 12-14: render overlay while tmp_path is still alive.
+        # load_grayscale を再呼び出ししても extract_walls 内と同じラスタライズ
+        # 結果になる (DPI が同じため決定的) ので、px 座標も完全に一致する。
+        overlay_image = _render_extract_overlay(tmp_path, spec, dpi=dpi)
     finally:
         if tmp_path:
             Path(tmp_path).unlink(missing_ok=True)
 
     n_walls = len(spec.get("walls", []))
     st.success(f"extracted walls={n_walls}")
+    if overlay_image is not None:
+        st.image(
+            overlay_image,
+            caption=f"Detected walls ({n_walls} segments) overlaid on input image",
+            use_container_width=True,
+        )
     json_basename = Path(uploaded.name).with_suffix(".json").name
     st.download_button(
         "Download walls JSON",
