@@ -4,7 +4,9 @@ README.md に貼る UI スクショの置き場。
 
 ## ファイル
 
-- `editor.png` — Streamlit UI のトップ画面（未アップロード状態 / Custom プリセット）
+- `editor.png` — Streamlit UI の主要機能画面。Step 12-13 以降は Building タブ
+  の "Extract from image" セクション (未アップロード状態) を写している。
+  dam タブのフローは README 本文で別途案内する。
 
 ## 撮り直し手順（macOS）
 
