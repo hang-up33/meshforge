@@ -236,6 +236,27 @@ def _add_extract_walls_args(c: argparse.ArgumentParser) -> None:
              "stay as separate walls, so door openings and adjacent rooms don't "
              "fuse into one wall; default 2.0 (set 0 to require overlap)",
     )
+    c.add_argument(
+        "--with-rooms", dest="with_rooms",
+        action=argparse.BooleanOptionalAction, default=False,
+        help="auto-detect rooms[] by polygonizing the wall network (Step 12-15). "
+             "default off; needs shapely (in 'building' extra).",
+    )
+    c.add_argument(
+        "--room-floor-thickness-mm", dest="room_floor_thickness_mm",
+        type=float, default=2.0, metavar="V",
+        help="floor slab thickness for auto-extracted rooms (mm); default 2.0. "
+             "ignored without --with-rooms.",
+    )
+    c.add_argument(
+        "--room-snap-tol-px", dest="room_snap_tol_px",
+        type=float, default=3.0, metavar="V",
+        help="endpoint snap tolerance in px for room polygonization; default 3.0. "
+             "shapely.snap は strict `<` 判定なので、floor_plan_simple の "
+             "中央壁の 2 px gap には 2.0 では足りず 3.0 が要る。Hough の端点 "
+             "不一致を吸収するために必要 (0 にすると壁同士が完全に touch しない "
+             "と閉路が見つからない)。ignored without --with-rooms.",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -441,6 +462,9 @@ def cmd_extract_walls(args: argparse.Namespace) -> int:
             merge_distance_mm=args.merge_distance_mm,
             merge_angle_deg=args.merge_angle_deg,
             merge_gap_mm=args.merge_gap_mm,
+            with_rooms=args.with_rooms,
+            room_floor_thickness_mm=args.room_floor_thickness_mm,
+            room_snap_tol_px=args.room_snap_tol_px,
         )
     except (OSError, ValueError, ImportError) as e:
         print(f"extract-walls error: {e}", file=sys.stderr)

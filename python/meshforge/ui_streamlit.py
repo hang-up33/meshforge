@@ -399,6 +399,17 @@ def _render_extract_overlay(
         )
     rgb = gray.convert("RGB")
     draw = ImageDraw.Draw(rgb)
+    # rooms[] を先に描く (青の細線で polygon outline) ので、後で重ねる赤い
+    # walls 線が前景になる。Step 12-15 で `with_rooms=True` のとき walls の
+    # 中心線と room polygon の辺がだいたい一致するため、walls が前景の方が
+    # 自然 (青はちらっと見える程度で、検出された rooms 数が分かれば十分)。
+    for room in spec.get("rooms", []):
+        coords = [
+            (float(x) * scale, float(y) * scale) for x, y in room["polygon"]
+        ]
+        if len(coords) >= 2:
+            coords.append(coords[0])
+            draw.line(coords, fill=(60, 140, 220), width=1)
     for wall in spec.get("walls", []):
         x1, y1 = wall["start"]
         x2, y2 = wall["end"]
@@ -490,6 +501,27 @@ def _building_spec_from_image_extract() -> tuple[dict, str] | None:
                 key="extract-merge-gap",
                 disabled=not merge,
             )
+            with_rooms = st.checkbox(
+                "Auto-extract rooms (Step 12-15)",
+                value=False,
+                key="extract-with-rooms",
+                help="walls の閉路を shapely.polygonize で検出して rooms[] に "
+                     "追加する。建てたあと床スラブが出る。",
+            )
+            room_floor_thickness_mm = st.number_input(
+                "Room floor thickness (mm)",
+                min_value=0.001, value=2.0, step=0.5, format="%.2f",
+                key="extract-room-floor",
+                disabled=not with_rooms,
+            )
+            room_snap_tol_px = st.number_input(
+                "Room snap tolerance (px)",
+                min_value=0.0, value=3.0, step=0.5, format="%.2f",
+                key="extract-room-snap",
+                disabled=not with_rooms,
+                help="shapely.snap の strict `<` 判定なので、2 px gap には "
+                     "3.0 が要る。Hough の端点不一致を吸収する。",
+            )
         submitted = st.form_submit_button(
             "Extract & Build",
             type="primary",
@@ -520,6 +552,9 @@ def _building_spec_from_image_extract() -> tuple[dict, str] | None:
                     min_length_mm=min_length_mm,
                     wall_thickness_mm=wall_thickness_mm,
                     wall_height_mm=wall_height_mm,
+                    with_rooms=with_rooms,
+                    room_floor_thickness_mm=room_floor_thickness_mm,
+                    room_snap_tol_px=room_snap_tol_px,
                     merge=merge,
                     merge_distance_mm=merge_distance_mm,
                     merge_angle_deg=merge_angle_deg,
@@ -553,13 +588,17 @@ def _building_spec_from_image_extract() -> tuple[dict, str] | None:
             Path(tmp_path).unlink(missing_ok=True)
 
     n_walls = len(spec.get("walls", []))
-    st.success(f"extracted walls={n_walls}")
+    n_rooms = len(spec.get("rooms", [])) if with_rooms else 0
+    summary_msg = f"extracted walls={n_walls}"
+    if with_rooms:
+        summary_msg += f", rooms={n_rooms}"
+    st.success(summary_msg)
     if overlay_image is not None:
-        st.image(
-            overlay_image,
-            caption=f"Detected walls ({n_walls} segments) overlaid on input image",
-            use_container_width=True,
-        )
+        caption = f"Detected walls ({n_walls} segments)"
+        if with_rooms:
+            caption += f" + rooms ({n_rooms})"
+        caption += " overlaid on input image"
+        st.image(overlay_image, caption=caption, use_container_width=True)
     json_basename = Path(uploaded.name).with_suffix(".json").name
     st.download_button(
         "Download walls JSON",
