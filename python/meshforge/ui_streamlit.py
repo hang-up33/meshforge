@@ -458,26 +458,40 @@ def _building_spec_from_image_extract() -> tuple[dict, str] | None:
             tmp.write(uploaded.getvalue())
             tmp_path = tmp.name
         with st.spinner("Extracting walls..."):
-            spec = extract_walls(
-                tmp_path,
-                dpi=dpi,
-                pixel_mm=pixel_mm,
-                threshold=threshold,
-                invert=invert,
-                min_length_mm=min_length_mm,
-                wall_thickness_mm=wall_thickness_mm,
-                wall_height_mm=wall_height_mm,
-                merge=merge,
-                merge_distance_mm=merge_distance_mm,
-                merge_angle_deg=merge_angle_deg,
-                merge_gap_mm=merge_gap_mm,
-            )
-    except ValueError as e:
-        st.error(f"extract-walls error: {e}")
-        return None
-    except ImportError as e:
-        st.error(f"extract-walls error: {e}")
-        return None
+            try:
+                spec = extract_walls(
+                    tmp_path,
+                    dpi=dpi,
+                    pixel_mm=pixel_mm,
+                    threshold=threshold,
+                    invert=invert,
+                    min_length_mm=min_length_mm,
+                    wall_thickness_mm=wall_thickness_mm,
+                    wall_height_mm=wall_height_mm,
+                    merge=merge,
+                    merge_distance_mm=merge_distance_mm,
+                    merge_angle_deg=merge_angle_deg,
+                    merge_gap_mm=merge_gap_mm,
+                )
+            except ValueError as e:
+                # _validate_* / no segments detected / 検証エラー。
+                st.error(f"extract-walls error: {e}")
+                return None
+            except ImportError as e:
+                # opencv-python-headless 未導入時の lazy import 失敗。
+                st.error(f"extract-walls error: {e}")
+                return None
+            except FileNotFoundError as e:
+                st.error(f"入力ファイルが見つかりません: {e}")
+                return None
+            except Exception as e:
+                # PIL.UnidentifiedImageError, 壊れた PDF, パスワード付き PDF など。
+                # dam タブと同じく型名を添えて UI を継続させる。
+                st.error(
+                    f"入力ファイルを読み込めませんでした "
+                    f"({type(e).__name__}: {e})。サポート形式は PNG / PDF です。"
+                )
+                return None
     finally:
         if tmp_path:
             Path(tmp_path).unlink(missing_ok=True)
