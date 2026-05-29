@@ -324,13 +324,27 @@ rooms / openings / roof / furniture は出さないので、抽出 → 手動で
 - dam モードや手書き building JSON しか使わないユーザには課さない。building
   extra (shapely / manifold3d) とも独立。
 
-スコープ外 (Step 12-13+):
+### Streamlit UI 経由 (Step 12-13 で実装)
+
+`.venv/bin/streamlit run python/meshforge/ui_streamlit.py` を起動して
+Building タブ → `Source = Extract from image` を選ぶと、UI 上で
+
+1. PNG / PDF アップロード
+2. パラメータ調整 (pixel_mm / threshold / wall_thickness_mm / merge 系等、
+   CLI と同じ意味の項目を form で露出)
+3. `Extract & Build` → `extract_walls` + `build_mesh` を一気に走らせる
+4. 中間 JSON 単体のダウンロード + STL の 3D プレビュー / ダウンロード
+
+ができる。同じ入力・同じパラメータで CLI と **バイト一致** する STL を返す
+(CLI / UI が同じ `extract_walls` + `build_mesh` 関数を呼ぶので自動的に成立)。
+
+スコープ外 (Step 12-14+):
 - 任意角度・斜め線分のマージ (現状は axis-aligned 限定)
 - 壁厚 / 壁高の自動検出 (CLI flag で固定値)
 - rooms / openings / roof / furniture の自動抽出
 - Claude API による意味付け (kind 推定など)
 - 複数ページ PDF
-- Streamlit UI への露出
+- UI 上での building JSON フォーム編集 / extract 結果の line overlay 可視化
 
 ### Claude API キー (Step 12-13+ で実装予定)
 

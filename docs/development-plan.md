@@ -479,10 +479,43 @@
     (building_minimal / floor / door / roof / gable / hip / pyramidal /
     furniture / dome.png) の md5 は不変
 
-- **Step 12-13 以降 (構想)**: 任意角度・斜め線分のマージ・壁厚自動検出・
+- **Step 12-13**: Streamlit UI の Building タブに `extract-walls` を露出。
+  Building タブ先頭に `st.radio("Source", ["Upload JSON", "Extract from image"])`
+  を追加し、画像から walls[] を自動生成して同じ `build_mesh` フローに流せる
+  ようにする。
+  - `ui_streamlit.py`: `_render_building_tab` を 2 分岐に整理 (`_building_spec_from_json_upload`
+    / `_building_spec_from_image_extract`)。共通の build_mesh + STL preview /
+    download は 1 か所に集約
+  - "Extract from image" の動作: PNG/PDF アップロード → form で extract パラメータ
+    (pixel_mm / invert / threshold / min_length_mm / wall_thickness_mm /
+    wall_height_mm / dpi / merge / merge_distance_mm / merge_angle_deg /
+    merge_gap_mm) を設定 → `Extract & Build` ボタンで
+    `meshforge.building.extract.extract_walls` を呼び中間 JSON を生成 →
+    JSON を download_button で別途ダウンロード可能 → そのまま build_mesh →
+    STL preview / download
+  - エラーは `extract_walls` の `ValueError` / `ImportError` を `st.error` で
+    表示 (CLI と同じメッセージ)
+  - `editor.png` は dam タブを写しているので 12-13 では更新不要 (UI 変更は
+    すべて Building タブ内、bit-identical)
+  - **やらないこと**: building JSON のフォーム編集 (手動で walls / rooms を
+    UI で追加)・Extract パラメータプリセット (CLI と同じデフォルト固定)・
+    Claude API 連携・複数ページ PDF 対応・extract 結果のセッション間保持・
+    extract 結果のブラウザ上での可視化 (line overlay 等)
+  - **完了条件**: ブラウザの Building タブで "Source = Extract from image" を
+    選び、`samples/floor_plan_simple.png` を pixel_mm=0.5 /
+    wall_thickness_mm=4 / wall_height_mm=24 / min_length_mm=30 / 他デフォルト
+    で `Extract & Build` すると、CLI の
+    `extract-walls --pixel-mm 0.5 --wall-thickness-mm 4.0 --wall-height-mm 24.0
+    --min-length-mm 30.0` → `convert --config` パスとバイト一致する STL が
+    生成される (md5 `5d84a7f57f9cc4ad3bcb8fbd6c76b79d`)。既存 9 サンプル
+    (building_minimal / floor / door / roof / gable / hip / pyramidal /
+    furniture / dome.png) の md5 は不変
+
+- **Step 12-14 以降 (構想)**: 任意角度・斜め線分のマージ・壁厚自動検出・
   rooms / openings / roof の自動抽出 (OpenCV) / Claude API による意味付け /
   不等辺四角錐 / mansard / eaves overhang・kind 別の家具形状 /
-  Streamlit UI への building JSON 編集フォーム + extract-walls 露出。
+  Streamlit UI への building JSON フォーム編集 / extract 結果のブラウザ上での
+  可視化。
 
 ### Step 13 以降 (構想のみ、ここでは確定しない)
 - マルチバンド UI 編集（Streamlit に layers フォームを追加）
@@ -518,6 +551,7 @@
 | Step 12-10 | building JSON のフォーム編集/生成・サンプル JSON のプリセット・JSON テンプレ生成・画像→JSON UI・複数 JSON 同時変換・building 用の細かいパラメータ調整 UI・cloud デプロイ調整 |
 | Step 12-11 | 線分マージ・壁厚/壁高の自動検出・rooms/openings/roof/furniture の自動抽出・Claude API 意味付け・複数ページ PDF・Streamlit UI 露出・抽出品質メトリクス |
 | Step 12-12 | 任意角度・斜め線分の merge・複数 cluster をまたぐ merge・rooms/openings/roof/furniture の自動抽出・Claude API 意味付け・Streamlit UI 露出 |
+| Step 12-13 | building JSON のフォーム編集・Extract パラメータプリセット・Claude API 連携・複数ページ PDF・extract 結果のセッション間保持・extract 結果のブラウザ上での可視化 (line overlay 等) |
 
 ## 着手判断
 
