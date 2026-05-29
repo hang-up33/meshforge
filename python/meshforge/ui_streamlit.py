@@ -369,6 +369,9 @@ def _building_spec_from_json_upload() -> tuple[dict, str] | None:
     return spec, uploaded.name
 
 
+_OVERLAY_MAX_SIDE_PX = 1600
+
+
 def _render_extract_overlay(
     image_path: str, spec: dict, *, dpi: float
 ) -> Image.Image:
@@ -378,15 +381,32 @@ def _render_extract_overlay(
     the same px grid that `extract_walls` operated on (same DPI rasterization
     for PDFs). walls[] の `start`/`end` は px なので、`scale_mm_per_px` を
     通さずそのまま PIL の coordinate system に渡せる。
+
+    extract form は `--dpi` を 600 まで許可しており、A4 PDF を 600 DPI で
+    入れると ~35 Mpx (RGB で 100 MB+) になる。`st.image` は PNG エンコードし
+    てブラウザに送るので、Streamlit Cloud の 1 GB RAM 上限でフリーズ / OOM
+    する。dam タブには 8 Mpx ガードがあるが extract 側にはない (Codex R2 P2)。
+    overlay は全体把握が目的で精細さは要らないので、長辺 `_OVERLAY_MAX_SIDE_PX`
+    px までに thumbnail してから線を描く。線座標も同じ scale で縮める。
     """
     gray = load_grayscale(image_path, dpi)
+    longest = max(gray.size)
+    scale = 1.0 if longest <= _OVERLAY_MAX_SIDE_PX else _OVERLAY_MAX_SIDE_PX / longest
+    if scale < 1.0:
+        gray = gray.resize(
+            (max(1, int(gray.width * scale)), max(1, int(gray.height * scale))),
+            Image.LANCZOS,
+        )
     rgb = gray.convert("RGB")
     draw = ImageDraw.Draw(rgb)
     for wall in spec.get("walls", []):
         x1, y1 = wall["start"]
         x2, y2 = wall["end"]
         draw.line(
-            [(float(x1), float(y1)), (float(x2), float(y2))],
+            [
+                (float(x1) * scale, float(y1) * scale),
+                (float(x2) * scale, float(y2) * scale),
+            ],
             fill=(220, 50, 50),
             width=2,
         )
