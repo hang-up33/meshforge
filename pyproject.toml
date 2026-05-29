@@ -18,10 +18,14 @@ dependencies = [
 # building extras pull in shapely + mapbox_earcut for floor-slab polygon
 # triangulation (Step 12-3) と、manifold3d for boolean difference (Step 12-4
 # openings)。dam-mode users never need them.
+# vision extras add OpenCV for floor-plan PNG → walls[] auto-extraction
+# (Step 12-11)。building assembler 自体は cv2 を import しないので、building
+# 中間 JSON を手書きする利用者には課さない。
 [project.optional-dependencies]
 pdf = ["PyMuPDF"]
 ui = ["streamlit", "streamlit-stl"]
 building = ["shapely", "mapbox_earcut", "manifold3d"]
+vision = ["opencv-python-headless"]
 
 [tool.setuptools.packages.find]
 where = ["python"]

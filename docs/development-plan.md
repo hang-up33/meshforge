@@ -419,10 +419,39 @@
     9 サンプル全部 (`building_minimal` / `floor` / `door` / `roof` / `gable` /
     `hip` / `pyramidal` / `furniture` / `dome.png`) の CLI 出力 md5 も不変
 
-- **Step 12-11 以降 (構想)**: 不等辺四角錐 / mansard / eaves overhang・
-  任意ポリゴンの gable / hip・kind 別の家具形状 (cylindrical toilet 等) /
-  画像→中間 JSON 自動生成 (OpenCV) / Claude API による意味付け /
-  Streamlit UI への building JSON 編集フォーム。
+- **Step 12-11**: 画像 → 中間 JSON 自動生成の最小一歩。新サブコマンド
+  `meshforge extract-walls input.png -o out.json` で `walls[]` だけを含む
+  building JSON を出す。
+  - `building/extract.py` に `extract_walls(image_path, ...) -> dict` を実装。
+    `meshforge.heightmap.load_grayscale` で PNG/PDF を読み (PDF は PyMuPDF +
+    --dpi)、`cv2.threshold` → `cv2.Canny` → `cv2.HoughLinesP` で線分検出 →
+    walls[] entry に変換 → `{schema_version: 1, scale_mm_per_px: pixel_mm,
+    walls: [...]}` を返す
+  - `cli.py` に `extract-walls` サブコマンド追加 (positional input + `-o` 出力、
+    `--dpi` / `--pixel-mm` / `--threshold` / `--no-invert` / `--min-length-mm` /
+    `--wall-thickness-mm` / `--wall-height-mm` フラグ)
+  - 新依存 `opencv-python-headless` を `vision` extra に分離
+    (`pip install -e '.[vision]'`)。dam モードや手書き building JSON しか使わない
+    ユーザには課さない。building extra とも独立
+  - `python/make_sample.py` に `floorplan_lines` kind を追加し
+    `samples/floor_plan_simple.png` を生成 (200×150 px、1 px stroke で外周 4 本
+    + 内壁 1 本)
+  - **やらないこと**: 線分マージ (Hough は壁の両 edge を別線として返すので
+    walls 数が約 2 倍になる)・壁厚 / 壁高の自動検出・rooms / openings / roof /
+    furniture の自動抽出・Claude API による意味付け (kind 推定)・複数ページ
+    PDF・Streamlit UI への露出・抽出結果の品質メトリクス
+  - **完了条件**: `meshforge extract-walls samples/floor_plan_simple.png
+    --pixel-mm 0.5 --wall-thickness-mm 4.0 --wall-height-mm 24.0
+    --min-length-mm 30.0 -o /tmp/extracted.json` で `walls[]` が非空の JSON
+    が出て、その JSON を `meshforge convert --config /tmp/extracted.json
+    out.stl` に流すと watertight=True の STL が生成される。既存 9 サンプル
+    (building_minimal / floor / door / roof / gable / hip / pyramidal /
+    furniture / dome.png) の md5 は不変
+
+- **Step 12-12 以降 (構想)**: 抽出 walls[] の線分マージ・壁厚自動検出・
+  rooms / openings / roof の自動抽出 (OpenCV) / Claude API による意味付け /
+  不等辺四角錐 / mansard / eaves overhang・kind 別の家具形状 /
+  Streamlit UI への building JSON 編集フォーム + extract-walls 露出。
 
 ### Step 13 以降 (構想のみ、ここでは確定しない)
 - マルチバンド UI 編集（Streamlit に layers フォームを追加）
@@ -456,6 +485,7 @@
 | Step 12-8 | 不等辺四角錐 (W≠D)・mansard / 折屋根・eaves overhang・任意ポリゴンの gable/hip/pyramidal・複数頂点 (鞍型等)・屋根と壁の boolean union・屋根の色/材質・Streamlit UI 露出 |
 | Step 12-9 | kind 別の家具形状 (cylindrical toilet 等)・家具と壁/床の boolean union・room polygon 内 bbox 検査・家具の色/材質・家具同士の重なり検出・複数階・家具自動配置・Streamlit UI 露出 |
 | Step 12-10 | building JSON のフォーム編集/生成・サンプル JSON のプリセット・JSON テンプレ生成・画像→JSON UI・複数 JSON 同時変換・building 用の細かいパラメータ調整 UI・cloud デプロイ調整 |
+| Step 12-11 | 線分マージ・壁厚/壁高の自動検出・rooms/openings/roof/furniture の自動抽出・Claude API 意味付け・複数ページ PDF・Streamlit UI 露出・抽出品質メトリクス |
 
 ## 着手判断
 

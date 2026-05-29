@@ -279,7 +279,54 @@ flat / gable / hip サンプルは 80×60 mm 矩形 footprint、pyramidal サン
 80×60 mm + 内壁の 2 部屋構成に table / sofa / bed の 3 家具を置いた例。
 sofa は `rotation_deg: 90` で 90° 回転。
 
-## API キー (Step 12-5 で実装予定)
+## 画像 → 中間 JSON 自動生成
+
+### `meshforge extract-walls` (Step 12-11 で実装)
+
+`walls[]` のみを含む中間 JSON を PNG / PDF 平面図から生成する CLI サブコマンド。
+rooms / openings / roof / furniture は出さないので、抽出 → 手動で追加 → convert、
+という運用になる。
+
+```bash
+.venv/bin/python -m meshforge extract-walls samples/floor_plan_simple.png \
+  --pixel-mm 0.5 \
+  --wall-thickness-mm 4.0 \
+  --wall-height-mm 24.0 \
+  --min-length-mm 30.0 \
+  -o plan.json
+.venv/bin/python -m meshforge convert --config plan.json out.stl
+```
+
+パイプライン:
+- `meshforge.heightmap.load_grayscale` で PNG/PDF を読み込み (PDF は PyMuPDF で
+  ラスタライズ、`--dpi` 適用)
+- 反転 (`--no-invert` で無効化) → `cv2.threshold` で 2 値化
+- `cv2.Canny` → `cv2.HoughLinesP` で線分検出 (`--min-length-mm` 以下は除外)
+- 各線分を walls[] entry に変換し、`{schema_version: 1, scale_mm_per_px: pixel_mm,
+  walls: [...]}` を出力 (`-o` なしなら stdout)
+
+`start` / `end` は **画像 px** で出力し、`scale_mm_per_px = --pixel-mm` を一緒に
+返す。ユーザーが結果 JSON と元画像を見比べて手動で start/end を編集できるよう、
+事前 mm 換算はしない。
+
+依存:
+- PNG 入力のみなら `opencv-python-headless` が必要
+  (`pip install -e '.[vision]'`)。
+- **PDF 入力時は `pdf` extra も併用**: `pip install -e '.[vision,pdf]'`
+  (`load_grayscale` が PyMuPDF を import するため)。
+- dam モードや手書き building JSON しか使わないユーザには課さない。building
+  extra (shapely / manifold3d) とも独立。
+
+スコープ外 (Step 12-12+):
+- 線分マージ (Hough は壁の両 edge を別線として返すので、1 px stroke の線でも
+  walls 数が約 2 倍になる。merge は将来 Step)
+- 壁厚 / 壁高の自動検出 (CLI flag で固定値)
+- rooms / openings / roof / furniture の自動抽出
+- Claude API による意味付け (kind 推定など)
+- 複数ページ PDF
+- Streamlit UI への露出
+
+### Claude API キー (Step 12-13+ で実装予定)
 
 VLM 呼び出しに使う Anthropic API キーの取得順位 (予定):
 
