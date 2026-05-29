@@ -229,6 +229,13 @@ def _add_extract_walls_args(c: argparse.ArgumentParser) -> None:
         default=5.0, metavar="V",
         help="angle tolerance for axis-aligned merge in degrees; default 5.0",
     )
+    c.add_argument(
+        "--merge-gap-mm", dest="merge_gap_mm", type=float,
+        default=2.0, metavar="V",
+        help="axial gap tolerance (mm) — segments separated by more than this "
+             "stay as separate walls, so door openings and adjacent rooms don't "
+             "fuse into one wall; default 2.0 (set 0 to require overlap)",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -433,6 +440,7 @@ def cmd_extract_walls(args: argparse.Namespace) -> int:
             merge=args.merge,
             merge_distance_mm=args.merge_distance_mm,
             merge_angle_deg=args.merge_angle_deg,
+            merge_gap_mm=args.merge_gap_mm,
         )
     except (OSError, ValueError, ImportError) as e:
         print(f"extract-walls error: {e}", file=sys.stderr)

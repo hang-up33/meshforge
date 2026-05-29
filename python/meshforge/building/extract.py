@@ -38,6 +38,7 @@ def extract_walls(
     merge: bool = True,
     merge_distance_mm: float = 2.0,
     merge_angle_deg: float = 5.0,
+    merge_gap_mm: float = 2.0,
 ) -> dict[str, Any]:
     """Return a building intermediate JSON (`schema_version: 1`) with `walls[]` only.
 
@@ -65,13 +66,18 @@ def extract_walls(
         raise ValueError(f"threshold must be in 0..255, got {threshold}")
     if merge:
         # merge=False のときは未使用なので未指定値 (任意) でも通す。merge=True の
-        # ときだけ「正の有限数」を要求する。
+        # ときだけ「正の有限数」を要求する。merge_gap_mm のみ 0 も許容する
+        # (0 = overlap 必須、gap で分断された壁は別 cluster のまま)。
         for name, value in (
             ("merge_distance_mm", merge_distance_mm),
             ("merge_angle_deg", merge_angle_deg),
         ):
             if not math.isfinite(value) or value <= 0:
                 raise ValueError(f"{name} must be a positive finite number, got {value}")
+        if not math.isfinite(merge_gap_mm) or merge_gap_mm < 0:
+            raise ValueError(
+                f"merge_gap_mm must be a non-negative finite number, got {merge_gap_mm}"
+            )
 
     try:
         import cv2
@@ -118,6 +124,7 @@ def extract_walls(
             segments_mm,
             distance_tol_mm=merge_distance_mm,
             angle_tol_deg=merge_angle_deg,
+            gap_tol_mm=merge_gap_mm,
         )
 
     walls: list[dict[str, Any]] = []
@@ -152,12 +159,18 @@ def _merge_axis_aligned(
     *,
     distance_tol_mm: float,
     angle_tol_deg: float,
+    gap_tol_mm: float,
 ) -> list[tuple[float, float, float, float]]:
     """軸方向の線分のみを greedy にクラスタリングして merge する (Step 12-12)。
 
     水平 (≈0°) の線分は y 中央値が近いものを 1 つに、垂直 (≈90°) は x 中央値が
     近いものを 1 つに統合する。任意角度・斜め線の merge は Step 12-13+ に残す
     (axis-aligned floor plan の大半はこれで十分)。
+
+    クラスタ追加条件は **直交方向の近さ + 軸方向の overlap or gap**:
+    軸方向に重なっていれば gap=0、離れていれば離距離が gap_tol_mm 以下なら同じ
+    cluster に入れる。これでドア開口で分断された壁や同じ y 上の別部屋の壁が
+    一本に統合される事故を防ぐ。
 
     1 cluster 内の最終線分は: 軸方向の min/max を新しい端点に取り、直交方向は
     cluster 全 segment の端点座標の平均にする (Canny の両 edge を中央へ寄せる)。
@@ -176,9 +189,15 @@ def _merge_axis_aligned(
             diagonals.append(seg)
 
     merged: list[tuple[float, float, float, float]] = list(diagonals)
-    for cluster in _cluster_by_perp(horizontals, axis="y", distance_tol=distance_tol_mm):
+    h_clusters = _cluster_by_perp(
+        horizontals, axis="y", distance_tol=distance_tol_mm, gap_tol=gap_tol_mm
+    )
+    for cluster in h_clusters:
         merged.append(_collapse_cluster(cluster, axis="y"))
-    for cluster in _cluster_by_perp(verticals, axis="x", distance_tol=distance_tol_mm):
+    v_clusters = _cluster_by_perp(
+        verticals, axis="x", distance_tol=distance_tol_mm, gap_tol=gap_tol_mm
+    )
+    for cluster in v_clusters:
         merged.append(_collapse_cluster(cluster, axis="x"))
     return merged
 
@@ -197,29 +216,56 @@ def _cluster_by_perp(
     *,
     axis: str,
     distance_tol: float,
+    gap_tol: float,
 ) -> list[list[tuple[float, float, float, float]]]:
-    """Group segments where the perpendicular-axis mean is within distance_tol.
+    """Group segments by perpendicular-axis closeness AND axial overlap / gap.
 
-    axis="y" → horizontal segments grouped by y-mid. axis="x" → vertical
-    segments grouped by x-mid. Greedy: 各 segment を「中心値が tolerance 内の
-    最初の既存 cluster」に入れる。代表値は累積平均で更新する。
+    axis="y" → horizontal segments grouped by y-mid + x range overlap.
+    axis="x" → vertical segments grouped by x-mid + y range overlap.
+
+    Greedy: 各 segment を「perpendicular 中心値が distance_tol 以内 + 軸方向に
+    overlap or 端点間距離 <= gap_tol」を満たす最初の既存 cluster に入れる。
+    軸方向 gap を見ないとドア開口で分断された壁や同じ y 上の別部屋の壁が 1 本
+    に結合される (Codex P2 で指摘)。
     """
     if axis not in ("x", "y"):
         raise AssertionError(f"axis must be 'x' or 'y', got {axis!r}")
-    clusters: list[dict] = []  # {"segs": [...], "mid_sum": float, "count": int}
+    clusters: list[dict] = []
     for seg in segs:
-        mid = (seg[1] + seg[3]) / 2.0 if axis == "y" else (seg[0] + seg[2]) / 2.0
+        if axis == "y":  # horizontal
+            mid = (seg[1] + seg[3]) / 2.0
+            axial_min = min(seg[0], seg[2])
+            axial_max = max(seg[0], seg[2])
+        else:  # vertical
+            mid = (seg[0] + seg[2]) / 2.0
+            axial_min = min(seg[1], seg[3])
+            axial_max = max(seg[1], seg[3])
         placed = False
         for c in clusters:
-            existing = c["mid_sum"] / c["count"]
-            if abs(mid - existing) <= distance_tol:
-                c["segs"].append(seg)
-                c["mid_sum"] += mid
-                c["count"] += 1
-                placed = True
-                break
+            existing_mid = c["mid_sum"] / c["count"]
+            if abs(mid - existing_mid) > distance_tol:
+                continue
+            # 軸方向 gap (overlap なら負、隙間ありなら正): max(0, ...) で clamp
+            gap = max(0.0, c["axial_min"] - axial_max, axial_min - c["axial_max"])
+            if gap > gap_tol:
+                continue
+            c["segs"].append(seg)
+            c["mid_sum"] += mid
+            c["count"] += 1
+            c["axial_min"] = min(c["axial_min"], axial_min)
+            c["axial_max"] = max(c["axial_max"], axial_max)
+            placed = True
+            break
         if not placed:
-            clusters.append({"segs": [seg], "mid_sum": mid, "count": 1})
+            clusters.append(
+                {
+                    "segs": [seg],
+                    "mid_sum": mid,
+                    "count": 1,
+                    "axial_min": axial_min,
+                    "axial_max": axial_max,
+                }
+            )
     return [c["segs"] for c in clusters]
 
 
