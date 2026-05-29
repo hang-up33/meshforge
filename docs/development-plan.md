@@ -560,11 +560,56 @@
     `fbfad66c3a17f9e06b144f1ccd1d7f0f` /
     `e1a9015cb867a476c59d3fe9018fd96c`)。
 
-- **Step 12-15 以降 (構想)**: 任意角度・斜め線分のマージ・壁厚自動検出・
-  rooms / openings / roof の自動抽出 (OpenCV) / Claude API による意味付け /
+- **Step 12-15**: `extract-walls` に `--with-rooms` を追加し、検出された
+  walls の閉路から `rooms[]` を自動生成する。shapely の `snap` →
+  `unary_union` → `polygonize` を素直に組み合わせて閉路を polygon として
+  列挙し、`floor_thickness_mm` を共通値で詰めて返す。
+  - `building/extract.py`:
+    - `extract_walls()` に `with_rooms: bool = False`,
+      `room_floor_thickness_mm: float = 2.0`, `room_snap_tol_px: float = 3.0`
+      引数を追加
+    - `_extract_rooms_from_walls(walls_px, *, snap_tol_px, floor_thickness_mm)`
+      を新設。`shapely.snap(MultiLineString, MultiLineString, tol)` で端点を
+      他線分に吸着 (Hough の端点不一致を吸収) → `unary_union` で交点で分割
+      → `polygonize` で閉路を polygon に → 各 polygon を rooms[] entry
+      (label は `room_<i>` のシリアル番号、floor_thickness_mm は共通値)
+    - snap tol の default を 3.0 にしたのは、`shapely.snap` が strict `<`
+      判定で、floor_plan_simple.png の中央壁の 2 px gap には 2.0 では
+      足りないため
+    - `with_rooms=False` のときは既存挙動を変えない (rooms キー無し JSON)
+  - `cli.py`: `extract-walls` に `--with-rooms` / `--no-rooms` /
+    `--room-floor-thickness-mm` / `--room-snap-tol-px` を追加
+  - `ui_streamlit.py`: Extract form に同じ 3 つを追加 + overlay 描画に
+    rooms[] の polygon outline (青、1 px) を walls の前段に追加。success
+    メッセージとキャプションに `rooms=N` を含める
+  - `docs/screenshots/overlay-preview.png` を `with_rooms=True` 版に
+    差し替え (再生成手順は [`docs/screenshots/README.md`](screenshots/README.md)
+    末尾のセクションを更新)
+  - 依存追加なし (shapely は `building` extra に既に入っている)
+  - **やらないこと**: openings / roof / furniture の自動抽出・部屋の意味
+    分類 (kitchen / bathroom 等)・部屋の家具自動配置・snap tolerance の
+    自動推定 (固定値)・凹形 polygon の特別扱い (polygonize の結果を
+    そのまま採用)・部屋同士の重なり / 隔離不能の警告・任意角度・斜め壁
+    の merge (Step 12-12 同様 axis-aligned only に依存)・Claude API による
+    label 推定・room polygon の手動編集 UI
+  - **完了条件**: `python -m meshforge extract-walls
+    samples/floor_plan_simple.png --pixel-mm 0.5 --wall-thickness-mm 4.0
+    --wall-height-mm 24.0 --min-length-mm 30.0 --with-rooms
+    -o /tmp/rooms.json` で walls=5 / rooms=2 の JSON が出る (Step 12-13
+    までの walls 5 本に加えて左室 + 右室)。`convert --config /tmp/rooms.json`
+    に流すと watertight STL (verts=56 faces=84、md5
+    `54168ea0f0ea41093bb0aa5a4c3b36d6`) が出る。`--with-rooms` 無しの
+    挙動は Step 12-14 と完全に同じで、extract → convert 出力は md5
+    `5d84a7f57f9cc4ad3bcb8fbd6c76b79d` 不変。既存 9 サンプル
+    (building_minimal / floor / door / roof / gable / hip / pyramidal /
+    furniture / dome.png) の CLI 出力 md5 も不変。
+
+- **Step 12-16 以降 (構想)**: 任意角度・斜め線分のマージ・壁厚自動検出・
+  openings / roof の自動抽出 (OpenCV) / Claude API による意味付け /
   不等辺四角錐 / mansard / eaves overhang・kind 別の家具形状 /
   Streamlit UI への building JSON フォーム編集・extract overlay の編集 UI 化
-  (drag で walls を動かす)・kind 別 overlay 色分け。
+  (drag で walls を動かす)・kind 別 overlay 色分け・room の label 推定
+  (kitchen / bathroom 等)・rooms の手動編集 UI。
 
 ### Step 13 以降 (構想のみ、ここでは確定しない)
 - マルチバンド UI 編集（Streamlit に layers フォームを追加）
@@ -602,6 +647,7 @@
 | Step 12-12 | 任意角度・斜め線分の merge・複数 cluster をまたぐ merge・rooms/openings/roof/furniture の自動抽出・Claude API 意味付け・Streamlit UI 露出 |
 | Step 12-13 | building JSON のフォーム編集・Extract パラメータプリセット・Claude API 連携・複数ページ PDF・extract 結果のセッション間保持・extract 結果のブラウザ上での可視化 (line overlay 等) |
 | Step 12-14 | 編集 UI (drag で walls を動かす / 追加)・kind 別の色分け・壁厚の polygon 描画・rooms / openings / roof / furniture の overlay・重なり / 異常箇所のハイライト・CLI への `--overlay` 出力・overlay 色 / 線幅の widget 化・実 UI 上の overlay の自動撮影 (overlay-preview.png で代替) |
+| Step 12-15 | openings / roof / furniture の自動抽出・部屋の意味分類 (kitchen/bathroom 等)・部屋の家具自動配置・snap tolerance の自動推定・凹形 polygon の特別扱い・部屋同士の重なり / 隔離不能の警告・任意角度・斜め壁の merge・Claude API による label 推定・room polygon の手動編集 UI |
 
 ## 着手判断
 

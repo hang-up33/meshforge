@@ -123,6 +123,8 @@ Streamlit の file_uploader は React 由来の事情で headless CDP からは
 同じ PIL ロジックを直接呼び出して overlay 画像を生成し、それを
 `overlay-preview.png` として置く運用にしている。
 
+Step 12-15 で `with_rooms=True` の場合に rooms 輪郭 (青) も追加。
+
 7. リポジトリ直下で:
 
    ```sh
@@ -136,10 +138,16 @@ Streamlit の file_uploader は React 由来の事情で headless CDP からは
        "samples/floor_plan_simple.png",
        pixel_mm=0.5, wall_thickness_mm=4.0,
        wall_height_mm=24.0, min_length_mm=30.0,
+       with_rooms=True,
    )
    gray = load_grayscale("samples/floor_plan_simple.png", 150.0)
    rgb = gray.convert("RGB")
    draw = ImageDraw.Draw(rgb)
+   for room in spec.get("rooms", []):
+       coords = [(float(x), float(y)) for x, y in room["polygon"]]
+       if len(coords) >= 2:
+           coords.append(coords[0])
+           draw.line(coords, fill=(60, 140, 220), width=1)
    for w in spec["walls"]:
        x1, y1 = w["start"]; x2, y2 = w["end"]
        draw.line([(float(x1), float(y1)), (float(x2), float(y2))],
@@ -156,12 +164,12 @@ Streamlit の file_uploader は React 由来の事情で headless CDP からは
    except Exception:
        font = ImageFont.load_default()
    draw2.text((pad, scaled.height + pad + 16),
-       "Step 12-14: 5 walls (4 outer + 1 inner) detected and "
-       "overlaid in red on floor_plan_simple.png",
+       "Step 12-14/15: walls (5, red) + rooms (2, blue) detected on "
+       "floor_plan_simple.png",
        fill=(50, 50, 50), font=font)
    canvas.save("docs/screenshots/overlay-preview.png", optimize=True)
    PY
    ```
 
    キャプション文言は Step が進む / extract パラメータが変わる時に
-   合わせて更新する。サンプル画像 / パラメータが同じなら 5 本のまま。
+   合わせて更新する。サンプル画像 / パラメータが同じなら walls=5 / rooms=2 のまま。
