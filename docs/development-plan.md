@@ -526,12 +526,20 @@
     button 前に `st.image(use_container_width=True)` で表示
   - 線色は赤 `(220, 50, 50)`、太さ 2 px (axis-aligned 壁を視認しやすい固定値)
   - 依存追加なし (`PIL.ImageDraw` は既存 `pillow` の同梱)
+  - **スクショ運用**: `editor.png` は Step 12-13 と同じく未アップロード状態
+    を写す (現行慣例を維持。Streamlit の file_uploader は React 由来の事情で
+    headless CDP からはファイルを流し込めず、UI 上に overlay が乗った状態の
+    自動撮影が成立しない)。代わりに `docs/screenshots/overlay-preview.png`
+    を新規追加し、`_render_extract_overlay` と同じ PIL ロジックで生成した
+    overlay 画像 (floor_plan_simple.png + 5 本の赤線) を README に並べて
+    載せる。再生成手順は [`docs/screenshots/README.md`](screenshots/README.md)
+    末尾のセクションに固定する
   - **やらないこと**: 編集 UI (drag で walls を動かす / 追加 / 削除)・kind
     別の色分け (walls に kind が無い)・壁厚を polygon で描画 (中心線 1 本で
     十分)・rooms / openings / roof / furniture の overlay (まだ自動抽出
     対象外)・重なり / 異常箇所のハイライト・CLI への `--overlay` 出力・
-    overlay 用パラメータ UI (色 / 線幅の widget 化)・`editor.png` 更新
-    (現スクショは未アップロード状態を写しているため overlay は写らない)
+    overlay 用パラメータ UI (色 / 線幅の widget 化)・実 UI 上の overlay
+    の自動撮影 (CDP + React の壁。手動撮影 or overlay-preview.png で代替)
   - **完了条件**: ブラウザの Building タブで "Source = Extract from image"
     を選び、`samples/floor_plan_simple.png` を Step 12-13 と同じ
     pixel_mm=0.5 / wall_thickness_mm=4 / wall_height_mm=24 /
@@ -593,7 +601,7 @@
 | Step 12-11 | 線分マージ・壁厚/壁高の自動検出・rooms/openings/roof/furniture の自動抽出・Claude API 意味付け・複数ページ PDF・Streamlit UI 露出・抽出品質メトリクス |
 | Step 12-12 | 任意角度・斜め線分の merge・複数 cluster をまたぐ merge・rooms/openings/roof/furniture の自動抽出・Claude API 意味付け・Streamlit UI 露出 |
 | Step 12-13 | building JSON のフォーム編集・Extract パラメータプリセット・Claude API 連携・複数ページ PDF・extract 結果のセッション間保持・extract 結果のブラウザ上での可視化 (line overlay 等) |
-| Step 12-14 | 編集 UI (drag で walls を動かす / 追加)・kind 別の色分け・壁厚の polygon 描画・rooms / openings / roof / furniture の overlay・重なり / 異常箇所のハイライト・CLI への `--overlay` 出力・overlay 色 / 線幅の widget 化・`editor.png` 更新 (未アップロード状態のスクショなので overlay は写らない) |
+| Step 12-14 | 編集 UI (drag で walls を動かす / 追加)・kind 別の色分け・壁厚の polygon 描画・rooms / openings / roof / furniture の overlay・重なり / 異常箇所のハイライト・CLI への `--overlay` 出力・overlay 色 / 線幅の widget 化・実 UI 上の overlay の自動撮影 (overlay-preview.png で代替) |
 
 ## 着手判断
 
