@@ -212,6 +212,23 @@ def _add_extract_walls_args(c: argparse.ArgumentParser) -> None:
         metavar="V",
         help="height assigned to every emitted wall (mm); default 2400",
     )
+    # Step 12-12 line merge. デフォルト on で Hough が両 edge を別線として
+    # 返す挙動を吸収する。--no-merge で生 Hough 出力に戻せる。
+    c.add_argument(
+        "--merge", action=argparse.BooleanOptionalAction, default=True,
+        help="merge near-collinear axis-aligned segments (Step 12-12). "
+             "default on; use --no-merge to keep raw Hough output (1 stroke = 2 walls).",
+    )
+    c.add_argument(
+        "--merge-distance-mm", dest="merge_distance_mm", type=float,
+        default=2.0, metavar="V",
+        help="perpendicular distance tolerance for line merge (mm); default 2.0",
+    )
+    c.add_argument(
+        "--merge-angle-deg", dest="merge_angle_deg", type=float,
+        default=5.0, metavar="V",
+        help="angle tolerance for axis-aligned merge in degrees; default 5.0",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -413,6 +430,9 @@ def cmd_extract_walls(args: argparse.Namespace) -> int:
             min_length_mm=args.min_length_mm,
             wall_thickness_mm=args.wall_thickness_mm,
             wall_height_mm=args.wall_height_mm,
+            merge=args.merge,
+            merge_distance_mm=args.merge_distance_mm,
+            merge_angle_deg=args.merge_angle_deg,
         )
     except (OSError, ValueError, ImportError) as e:
         print(f"extract-walls error: {e}", file=sys.stderr)

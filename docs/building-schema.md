@@ -302,6 +302,10 @@ rooms / openings / roof / furniture は出さないので、抽出 → 手動で
   ラスタライズ、`--dpi` 適用)
 - 反転 (`--no-invert` で無効化) → `cv2.threshold` で 2 値化
 - `cv2.Canny` → `cv2.HoughLinesP` で線分検出 (`--min-length-mm` 以下は除外)
+- **Step 12-12**: 軸方向 (水平 ≈0°、垂直 ≈90°) の near-collinear 線分を greedy
+  にクラスタリングして 1 本に merge (`--merge`、デフォルト on)。1 px stroke の
+  壁線が Canny で両 edge として返ってくる挙動を吸収する。斜め線はそのまま残す。
+  `--no-merge` で raw Hough 出力に戻せる
 - 各線分を walls[] entry に変換し、`{schema_version: 1, scale_mm_per_px: pixel_mm,
   walls: [...]}` を出力 (`-o` なしなら stdout)
 
@@ -317,9 +321,8 @@ rooms / openings / roof / furniture は出さないので、抽出 → 手動で
 - dam モードや手書き building JSON しか使わないユーザには課さない。building
   extra (shapely / manifold3d) とも独立。
 
-スコープ外 (Step 12-12+):
-- 線分マージ (Hough は壁の両 edge を別線として返すので、1 px stroke の線でも
-  walls 数が約 2 倍になる。merge は将来 Step)
+スコープ外 (Step 12-13+):
+- 任意角度・斜め線分のマージ (現状は axis-aligned 限定)
 - 壁厚 / 壁高の自動検出 (CLI flag で固定値)
 - rooms / openings / roof / furniture の自動抽出
 - Claude API による意味付け (kind 推定など)
