@@ -76,6 +76,9 @@ def extract_walls(
     _, binary = cv2.threshold(arr, threshold, 255, cv2.THRESH_BINARY)
     edges = cv2.Canny(binary, canny_low, canny_high)
 
+    # pixel_mm > 0 はこの関数の冒頭 (line 45-58) で既に validate 済なので
+    # この除算は ZeroDivisionError を起こさない。convert 側の数値検証パターンと
+    # 同じ「正の有限数」要求を再掲しないように上に集約してある。
     min_length_px = max(1, int(round(min_length_mm / pixel_mm)))
     lines = cv2.HoughLinesP(
         edges,
@@ -98,6 +101,15 @@ def extract_walls(
                     "height_mm": float(wall_height_mm),
                 }
             )
+
+    # 0 件は building 側で walls 必須エラーになり、書き出した JSON が convert で
+    # 即失敗する。extract-walls の時点で error にして「使えない JSON」を残さない。
+    if not walls:
+        raise ValueError(
+            "no wall segments detected — try lowering --min-length-mm, "
+            "raising --threshold, or toggling --no-invert (current invert="
+            f"{invert}, threshold={threshold}, min_length_mm={min_length_mm})"
+        )
 
     return {
         "schema_version": 1,
