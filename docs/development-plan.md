@@ -577,8 +577,10 @@
       判定で、floor_plan_simple.png の中央壁の 2 px gap には 2.0 では
       足りないため
     - `with_rooms=False` のときは既存挙動を変えない (rooms キー無し JSON)
-  - `cli.py`: `extract-walls` に `--with-rooms` / `--no-rooms` /
-    `--room-floor-thickness-mm` / `--room-snap-tol-px` を追加
+  - `cli.py`: `extract-walls` に `--with-rooms` / `--no-with-rooms`
+    (`argparse.BooleanOptionalAction` の自動生成、既存 `--merge` /
+    `--no-merge` と同じパターン) / `--room-floor-thickness-mm` /
+    `--room-snap-tol-px` を追加
   - `ui_streamlit.py`: Extract form に同じ 3 つを追加 + overlay 描画に
     rooms[] の polygon outline (青、1 px) を walls の前段に追加。success
     メッセージとキャプションに `rooms=N` を含める
