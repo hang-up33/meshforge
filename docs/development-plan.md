@@ -455,23 +455,27 @@
     斜め に分類。水平は y 中央値、垂直は x 中央値で greedy にクラスタリングして
     `--merge-distance-mm` 以内のものを 1 cluster に。各 cluster は軸方向の
     min/max を端点に、直交方向は全端点の平均に collapse する
+  - cluster 追加判定は「直交方向の近さ + **軸方向の overlap or gap <=
+    --merge-gap-mm**」。これでドア開口で分断された壁や同じ y 上の別部屋の壁が
+    1 本に統合されない。`--merge-gap-mm 0` を指定すれば overlap 必須
   - 斜め線分は merge せずそのまま残す (任意角度の merge は Step 12-13+)
   - `extract_walls()` に `merge=True` (デフォルト) / `merge_distance_mm=2.0` /
-    `merge_angle_deg=5.0` 引数を追加
-  - `cli.py`: `--merge` / `--no-merge` / `--merge-distance-mm` / `--merge-angle-deg`
-    フラグを追加
+    `merge_angle_deg=5.0` / `merge_gap_mm=2.0` 引数を追加
+  - `cli.py`: `--merge` / `--no-merge` / `--merge-distance-mm` / `--merge-angle-deg` /
+    `--merge-gap-mm` フラグを追加
   - 内部処理は mm 単位 (線分を `* scale` で mm に変換 → merge → `/ scale` で
     px に戻して JSON 出力)。これで `--pixel-mm` が変わっても tolerance の意味は
     変わらない
   - 依存追加なし (numpy + cv2 はすでに vision extra)
   - **やらないこと**: 任意角度・斜め線の merge・複数 cluster をまたぐ merge
-    (greedy first-match のみ)・gap (overlap なし) の handling・rooms / openings
-    /roof / furniture の自動抽出・Claude API 意味付け・Streamlit UI 露出
+    (greedy first-match のみ)・rooms / openings / roof / furniture の自動抽出・
+    Claude API 意味付け・Streamlit UI 露出
   - **完了条件**: `meshforge extract-walls samples/floor_plan_simple.png
     --pixel-mm 0.5 --wall-thickness-mm 4.0 --wall-height-mm 24.0
     --min-length-mm 30.0 -o out.json` で walls 数が **5** (Step 12-11 までは 10) に
-    減る。`--no-merge` を渡すと 10 のまま (Step 12-11 互換)。merged JSON を
-    convert に流すと watertight=True (verts=40 faces=60)。既存 9 サンプル
+    減る。`--no-merge` を渡すと 10 のまま (Step 12-11 互換)。gap で分断された
+    線分は `--merge-gap-mm` 以下なら統合、超えれば別 wall として残す。merged
+    JSON を convert に流すと watertight=True (verts=40 faces=60)。既存 9 サンプル
     (building_minimal / floor / door / roof / gable / hip / pyramidal /
     furniture / dome.png) の md5 は不変
 
@@ -513,7 +517,7 @@
 | Step 12-9 | kind 別の家具形状 (cylindrical toilet 等)・家具と壁/床の boolean union・room polygon 内 bbox 検査・家具の色/材質・家具同士の重なり検出・複数階・家具自動配置・Streamlit UI 露出 |
 | Step 12-10 | building JSON のフォーム編集/生成・サンプル JSON のプリセット・JSON テンプレ生成・画像→JSON UI・複数 JSON 同時変換・building 用の細かいパラメータ調整 UI・cloud デプロイ調整 |
 | Step 12-11 | 線分マージ・壁厚/壁高の自動検出・rooms/openings/roof/furniture の自動抽出・Claude API 意味付け・複数ページ PDF・Streamlit UI 露出・抽出品質メトリクス |
-| Step 12-12 | 任意角度・斜め線分の merge・複数 cluster をまたぐ merge・gap (overlap なし) の handling・rooms/openings/roof/furniture の自動抽出・Claude API 意味付け・Streamlit UI 露出 |
+| Step 12-12 | 任意角度・斜め線分の merge・複数 cluster をまたぐ merge・rooms/openings/roof/furniture の自動抽出・Claude API 意味付け・Streamlit UI 露出 |
 
 ## 着手判断
 

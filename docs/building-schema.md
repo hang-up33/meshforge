@@ -305,7 +305,10 @@ rooms / openings / roof / furniture は出さないので、抽出 → 手動で
 - **Step 12-12**: 軸方向 (水平 ≈0°、垂直 ≈90°) の near-collinear 線分を greedy
   にクラスタリングして 1 本に merge (`--merge`、デフォルト on)。1 px stroke の
   壁線が Canny で両 edge として返ってくる挙動を吸収する。斜め線はそのまま残す。
-  `--no-merge` で raw Hough 出力に戻せる
+  `--no-merge` で raw Hough 出力に戻せる。cluster 追加判定は「直交方向の近さ
+  (`--merge-distance-mm`) + 軸方向の overlap または gap (`--merge-gap-mm`、
+  デフォルト 2.0)」なので、ドア開口で分断された壁や同じ y 上の別部屋の壁が
+  1 本に統合される事故を防ぐ
 - 各線分を walls[] entry に変換し、`{schema_version: 1, scale_mm_per_px: pixel_mm,
   walls: [...]}` を出力 (`-o` なしなら stdout)
 
