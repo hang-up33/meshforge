@@ -6,8 +6,9 @@ HoughLinesP → filter by min length → optional axis-aligned line merge →
 emit walls[] as a building intermediate JSON (schema_version=1).
 
 Step 12-12 adds the merge pass so 1 stroke の壁線が 2 segments で帰ってくる
-Canny の挙動を吸収する。水平 (≈0°/180°) / 垂直 (≈90°) のみを対象にし、
-任意角度・斜めの merge は Step 12-13+ に残す。
+Canny の挙動を吸収する。水平 (≈0°/180°) / 垂直 (≈90°) を対象にする。
+Step 12-16 で同じ tolerance を任意角度に一般化し、斜め壁の near-collinear
+segments も merge するようにした。
 
 Step 12-15 で `with_rooms=True` のとき shapely.snap → unary_union →
 polygonize で walls の閉路を検出し rooms[] を JSON に追記する。Hough の
@@ -244,11 +245,11 @@ def _merge_axis_aligned(
     angle_tol_deg: float,
     gap_tol_mm: float,
 ) -> list[tuple[float, float, float, float]]:
-    """軸方向の線分のみを greedy にクラスタリングして merge する (Step 12-12)。
+    """線分を向きで分類し、各グループを greedy にクラスタリングして merge する。
 
     水平 (≈0°) の線分は y 中央値が近いものを 1 つに、垂直 (≈90°) は x 中央値が
-    近いものを 1 つに統合する。任意角度・斜め線の merge は Step 12-13+ に残す
-    (axis-aligned floor plan の大半はこれで十分)。
+    近いものを 1 つに統合する (Step 12-12)。斜め線分は `_merge_diagonals` で
+    任意角度の near-collinear クラスタとして同じ tolerance で統合する (Step 12-16)。
 
     クラスタ追加条件は **直交方向の近さ + 軸方向の overlap or gap**:
     軸方向に重なっていれば gap=0、離れていれば離距離が gap_tol_mm 以下なら同じ
@@ -271,7 +272,14 @@ def _merge_axis_aligned(
         else:
             diagonals.append(seg)
 
-    merged: list[tuple[float, float, float, float]] = list(diagonals)
+    # 斜め線分も near-collinear なら統合する (Step 12-16)。axis-aligned と同じ
+    # 「角度近接 + 垂直距離 + 軸方向 overlap/gap」基準を任意角度に一般化する。
+    merged: list[tuple[float, float, float, float]] = _merge_diagonals(
+        diagonals,
+        distance_tol_mm=distance_tol_mm,
+        angle_tol=angle_tol,
+        gap_tol_mm=gap_tol_mm,
+    )
     h_clusters = _cluster_by_perp(
         horizontals, axis="y", distance_tol=distance_tol_mm, gap_tol=gap_tol_mm
     )
@@ -371,3 +379,101 @@ def _collapse_cluster(
         ys = [c for seg in cluster for c in (seg[1], seg[3])]
         return (sum(xs) / len(xs), min(ys), sum(xs) / len(xs), max(ys))
     raise AssertionError(f"axis must be 'x' or 'y', got {axis!r}")
+
+
+def _merge_diagonals(
+    segments_mm: list[tuple[float, float, float, float]],
+    *,
+    distance_tol_mm: float,
+    angle_tol: float,
+    gap_tol_mm: float,
+) -> list[tuple[float, float, float, float]]:
+    """任意角度の near-collinear 線分を greedy にクラスタリングして merge する (Step 12-16).
+
+    axis-aligned 版 (`_cluster_by_perp`) の「直交方向の近さ + 軸方向 overlap/gap」を
+    任意角度に一般化する。各線分を自身の向き θ で
+    - perpendicular offset d = -x·sinθ + y·cosθ (原点から線までの符号付き距離)
+    - axial position t = x·cosθ + y·sinθ (線方向への射影)
+    に分解し、cluster へは「角度差 <= angle_tol かつ |d - d_mean| <= distance_tol
+    かつ 軸方向 gap <= gap_tol」のとき追加する。
+
+    diagonals は分類段階で [angle_tol, π-angle_tol] の安全域 (0/π の wrap を跨が
+    ない) に限定済みなので、角度の平均は単純な算術平均で足りる。collapse は
+    cluster 平均角の線上に全端点を射影し、軸方向 min/max を端点・直交方向は平均
+    offset に寄せる (`_collapse_diagonal`)。
+    """
+    clusters: list[dict] = []
+    for seg in segments_mm:
+        theta = _angle_normalized(seg)
+        cos_t, sin_t = math.cos(theta), math.sin(theta)
+        # 両端点の perpendicular offset / axial position。線上なので d は両端ほぼ
+        # 一致するが、Hough 由来の微小ブレを均すため平均を取る。
+        d1 = -seg[0] * sin_t + seg[1] * cos_t
+        d2 = -seg[2] * sin_t + seg[3] * cos_t
+        d = (d1 + d2) / 2.0
+        t1 = seg[0] * cos_t + seg[1] * sin_t
+        t2 = seg[2] * cos_t + seg[3] * sin_t
+        axial_min, axial_max = min(t1, t2), max(t1, t2)
+        placed = False
+        for c in clusters:
+            mean_angle = c["angle_sum"] / c["count"]
+            dtheta = abs(theta - mean_angle)
+            dtheta = min(dtheta, math.pi - dtheta)  # 0/π wrap 安全側
+            if dtheta > angle_tol:
+                continue
+            mean_d = c["d_sum"] / c["count"]
+            if abs(d - mean_d) > distance_tol_mm:
+                continue
+            gap = max(0.0, c["axial_min"] - axial_max, axial_min - c["axial_max"])
+            if gap > gap_tol_mm:
+                continue
+            c["segs"].append(seg)
+            c["angle_sum"] += theta
+            c["d_sum"] += d
+            c["count"] += 1
+            c["axial_min"] = min(c["axial_min"], axial_min)
+            c["axial_max"] = max(c["axial_max"], axial_max)
+            placed = True
+            break
+        if not placed:
+            clusters.append(
+                {
+                    "segs": [seg],
+                    "angle_sum": theta,
+                    "d_sum": d,
+                    "count": 1,
+                    "axial_min": axial_min,
+                    "axial_max": axial_max,
+                }
+            )
+    return [_collapse_diagonal(c["segs"]) for c in clusters]
+
+
+def _collapse_diagonal(
+    cluster: list[tuple[float, float, float, float]],
+) -> tuple[float, float, float, float]:
+    """Collapse an arbitrary-angle cluster to one segment along the mean direction.
+
+    cluster 平均角 θ の線上に全端点を射影し、軸方向 (t) の min/max を端点に、
+    直交方向 (perpendicular offset d) は全端点の平均にして 1 本へまとめる。
+    θ=0 / π/2 では `_collapse_cluster` の axis-aligned 版と一致する。
+    """
+    thetas = [_angle_normalized(seg) for seg in cluster]
+    theta = sum(thetas) / len(thetas)
+    cos_t, sin_t = math.cos(theta), math.sin(theta)
+    ds: list[float] = []
+    ts: list[float] = []
+    for seg in cluster:
+        for x, y in ((seg[0], seg[1]), (seg[2], seg[3])):
+            ds.append(-x * sin_t + y * cos_t)
+            ts.append(x * cos_t + y * sin_t)
+    d = sum(ds) / len(ds)
+    t_min, t_max = min(ts), max(ts)
+    # 線上の点 p0 = d·n (n=(-sinθ, cosθ)) を基準に t で両端を取る。
+    px0, py0 = -d * sin_t, d * cos_t
+    return (
+        px0 + t_min * cos_t,
+        py0 + t_min * sin_t,
+        px0 + t_max * cos_t,
+        py0 + t_max * sin_t,
+    )

@@ -212,12 +212,14 @@ def _add_extract_walls_args(c: argparse.ArgumentParser) -> None:
         metavar="V",
         help="height assigned to every emitted wall (mm); default 2400",
     )
-    # Step 12-12 line merge. デフォルト on で Hough が両 edge を別線として
-    # 返す挙動を吸収する。--no-merge で生 Hough 出力に戻せる。
+    # Step 12-12 line merge (axis-aligned), Step 12-16 で斜め線にも拡張。
+    # デフォルト on で Hough が両 edge を別線として返す挙動を吸収する。
+    # --no-merge で生 Hough 出力に戻せる。
     c.add_argument(
         "--merge", action=argparse.BooleanOptionalAction, default=True,
-        help="merge near-collinear axis-aligned segments (Step 12-12). "
-             "default on; use --no-merge to keep raw Hough output (1 stroke = 2 walls).",
+        help="merge near-collinear segments — axis-aligned (Step 12-12) and "
+             "diagonal (Step 12-16). default on; use --no-merge to keep raw "
+             "Hough output (1 stroke = 2 walls).",
     )
     c.add_argument(
         "--merge-distance-mm", dest="merge_distance_mm", type=float,
@@ -227,7 +229,7 @@ def _add_extract_walls_args(c: argparse.ArgumentParser) -> None:
     c.add_argument(
         "--merge-angle-deg", dest="merge_angle_deg", type=float,
         default=5.0, metavar="V",
-        help="angle tolerance for axis-aligned merge in degrees; default 5.0",
+        help="angle tolerance for line merge in degrees; default 5.0",
     )
     c.add_argument(
         "--merge-gap-mm", dest="merge_gap_mm", type=float,
