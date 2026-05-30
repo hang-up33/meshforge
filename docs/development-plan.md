@@ -606,11 +606,48 @@
     (building_minimal / floor / door / roof / gable / hip / pyramidal /
     furniture / dome.png) の CLI 出力 md5 も不変。
 
-- **Step 12-16 以降 (構想)**: 任意角度・斜め線分のマージ・壁厚自動検出・
-  openings / roof の自動抽出 (OpenCV) / Claude API による意味付け /
-  不等辺四角錐 / mansard / eaves overhang・kind 別の家具形状 /
-  Streamlit UI への building JSON フォーム編集・extract overlay の編集 UI 化
-  (drag で walls を動かす)・kind 別 overlay 色分け・room の label 推定
+- **Step 12-16**: `extract-walls` の merge を任意角度 (斜め壁) に拡張。
+  Step 12-12 が axis-aligned only にしていた斜め線分の素通しをやめ、同じ
+  tolerance を任意角度に一般化して near-collinear な斜め線分も 1 本に統合する。
+  - `building/extract.py`:
+    - `_merge_axis_aligned` の diagonals 素通し (`merged = list(diagonals)`) を
+      `_merge_diagonals(diagonals, ...)` に差し替え。`_merge_diagonals` /
+      `_collapse_diagonal` を新設
+    - 各線分を自身の向き θ で perpendicular offset `d = -x·sinθ + y·cosθ` と
+      axial position `t = x·cosθ + y·sinθ` に分解し、「角度差 <= merge_angle_deg
+      かつ |d - d_mean| <= merge_distance_mm かつ 軸方向 gap <= merge_gap_mm」で
+      greedy にクラスタリング。collapse は cluster 平均角の線上に全端点を射影し
+      軸方向 min/max を端点・直交方向は平均 offset に寄せる
+    - θ=0 / π/2 では axis-aligned 版の collapse と一致する設計だが、回帰を避ける
+      ため H/V は既存パスのまま維持し、diagonal バケツだけを新規処理する
+  - **既存の merge flag (`--merge` / `--merge-distance-mm` / `--merge-angle-deg` /
+    `--merge-gap-mm`) を流用**し、新フラグは追加しない。CLI / UI のヘルプ文言を
+    「near-collinear segments (axis-aligned + diagonal)」に更新
+  - `python/make_sample.py` に `floorplan_diagonal` kind を追加し
+    `samples/floor_plan_diagonal.png` を生成 (200×150 px、外周 4 本 axis-aligned +
+    太さ 3 px の斜め壁 1 本。3 px stroke は Canny が両 edge を別線として返すので
+    diagonal merge の効果を確認できる)
+  - 依存追加なし (numpy + cv2 は既に vision extra)
+  - **やらないこと**: 壁厚の自動検出・複数 cluster をまたぐ merge (greedy
+    first-match のみ)・openings / roof / furniture の自動抽出・Claude API 意味付け・
+    斜め壁からの rooms 抽出の特別扱い (shapely polygonize はそのまま動く)・
+    Streamlit UI への新 widget 追加 (既存 merge param の流用のみ)・任意角度線分の
+    端点 snap 高度化
+  - **完了条件**: `python -m meshforge extract-walls
+    samples/floor_plan_diagonal.png --pixel-mm 0.5 --wall-thickness-mm 4.0
+    --wall-height-mm 24.0 --min-length-mm 30.0 -o out.json` で walls=5 になる
+    (`--no-merge` は 11、内 3 本が斜め壁の near-collinear 線分)。`convert
+    --config out.json` に流すと watertight STL (verts=40 faces=60、md5
+    `fab9dab3c903bd515c23abe1d89ce16e`) が出る。`floor_plan_simple.png` は斜め線が
+    無いので Step 12-15 と完全一致 (merge 出力 md5 `5d84a7f57f9cc4ad3bcb8fbd6c76b79d`
+    / `--with-rooms` `54168ea0f0ea41093bb0aa5a4c3b36d6` 不変)。既存 9 サンプル
+    (building_minimal / floor / door / roof / gable / hip / pyramidal /
+    furniture / dome.png) の md5 も不変。
+
+- **Step 12-17 以降 (構想)**: 壁厚自動検出・openings / roof の自動抽出 (OpenCV) /
+  Claude API による意味付け / 不等辺四角錐 / mansard / eaves overhang・kind 別の
+  家具形状 / Streamlit UI への building JSON フォーム編集・extract overlay の
+  編集 UI 化 (drag で walls を動かす)・kind 別 overlay 色分け・room の label 推定
   (kitchen / bathroom 等)・rooms の手動編集 UI。
 
 ### Step 13 以降 (構想のみ、ここでは確定しない)
@@ -650,6 +687,7 @@
 | Step 12-13 | building JSON のフォーム編集・Extract パラメータプリセット・Claude API 連携・複数ページ PDF・extract 結果のセッション間保持・extract 結果のブラウザ上での可視化 (line overlay 等) |
 | Step 12-14 | 編集 UI (drag で walls を動かす / 追加)・kind 別の色分け・壁厚の polygon 描画・rooms / openings / roof / furniture の overlay・重なり / 異常箇所のハイライト・CLI への `--overlay` 出力・overlay 色 / 線幅の widget 化・実 UI 上の overlay の自動撮影 (overlay-preview.png で代替) |
 | Step 12-15 | openings / roof / furniture の自動抽出・部屋の意味分類 (kitchen/bathroom 等)・部屋の家具自動配置・snap tolerance の自動推定・凹形 polygon の特別扱い・部屋同士の重なり / 隔離不能の警告・任意角度・斜め壁の merge・Claude API による label 推定・room polygon の手動編集 UI |
+| Step 12-16 | 壁厚の自動検出・複数 cluster をまたぐ merge・openings / roof / furniture の自動抽出・Claude API 意味付け・斜め壁からの rooms 抽出の特別扱い・Streamlit UI への新 widget 追加・任意角度線分の端点 snap 高度化 |
 
 ## 着手判断
 

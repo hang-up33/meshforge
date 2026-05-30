@@ -48,7 +48,29 @@ def floorplan_lines(_unused_size: int = 256) -> np.ndarray:
     return np.array(img, dtype=np.uint8)
 
 
-KINDS = {"dome": dome, "floorplan": floorplan, "floorplan_lines": floorplan_lines}
+def floorplan_diagonal(_unused_size: int = 256) -> np.ndarray:
+    # Step 12-16 の斜め線 merge 用テスト入力。外周 4 本 (axis-aligned, 1 px) に
+    # 加えて太さ 3 px の斜め壁を 1 本引く。3 px stroke は Canny が両 edge を
+    # 別の near-collinear 斜め線分として返すので、diagonal merge が「2 本 → 1 本」
+    # に統合できるかをそのまま検証できる (1 px だと 1 本しか出ず merge の効果が
+    # 見えない)。外周の axis-aligned 壁は既存の H/V merge と共存することを示す。
+    from PIL import Image, ImageDraw
+    W, H = 200, 150
+    img = Image.new("L", (W, H), 255)
+    draw = ImageDraw.Draw(img)
+    # 外周長方形 (20,20)-(180,130)
+    draw.rectangle([(20, 20), (180, 130)], outline=0, width=1)
+    # 斜め壁: 左下寄りから右上寄りへ。太さ 3 px で両 edge を出す
+    draw.line([(40, 120), (160, 30)], fill=0, width=3)
+    return np.array(img, dtype=np.uint8)
+
+
+KINDS = {
+    "dome": dome,
+    "floorplan": floorplan,
+    "floorplan_lines": floorplan_lines,
+    "floorplan_diagonal": floorplan_diagonal,
+}
 
 
 def _save_pdf(img: Image.Image, path: str) -> None:

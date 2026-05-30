@@ -479,7 +479,7 @@ def _building_spec_from_image_extract() -> tuple[dict, str] | None:
                 key="extract-wall-height",
             )
             merge = st.checkbox(
-                "Merge axis-aligned segments (Step 12-12)",
+                "Merge near-collinear segments (Step 12-12 / 12-16)",
                 value=True,
                 key="extract-merge",
             )
