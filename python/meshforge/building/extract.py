@@ -391,11 +391,18 @@ def _merge_diagonals(
     """任意角度の near-collinear 線分を greedy にクラスタリングして merge する (Step 12-16).
 
     axis-aligned 版 (`_cluster_by_perp`) の「直交方向の近さ + 軸方向 overlap/gap」を
-    任意角度に一般化する。各線分を自身の向き θ で
-    - perpendicular offset d = -x·sinθ + y·cosθ (原点から線までの符号付き距離)
-    - axial position t = x·cosθ + y·sinθ (線方向への射影)
-    に分解し、cluster へは「角度差 <= angle_tol かつ |d - d_mean| <= distance_tol
-    かつ 軸方向 gap <= gap_tol」のとき追加する。
+    任意角度に一般化する。距離・軸方向 gap は **cluster の平均角 θ を基準角、cluster
+    重心を基準点** にして測る:
+    - perpendicular offset = -(x-cx)·sinθ + (y-cy)·cosθ (cluster 線からの符号付き距離)
+    - axial position       =  (x-cx)·cosθ + (y-cy)·sinθ (線方向への射影)
+    cluster へは「角度差 <= angle_tol かつ |perp| <= distance_tol かつ 軸方向
+    gap <= gap_tol」のとき追加する。
+
+    基準角・基準点を cluster 側に揃えるのが要点 (Codex P2)。各線分を自身の θ で原点
+    基準に分解すると、原点から遠い斜め壁では角度の微小差 Δθ が perp に
+    distance×sin(Δθ) として増幅され、同一直線上の near-collinear フラグメントでも
+    距離が distance_tol を超えて統合されない。基準を cluster 重心に取れば増幅係数が
+    重心からの距離 (≒線分長) に縮み、原点位置に依らず安定する。
 
     diagonals は分類段階で [angle_tol, π-angle_tol] の安全域 (0/π の wrap を跨が
     ない) に限定済みなので、角度の平均は単純な算術平均で足りる。collapse は
@@ -405,15 +412,8 @@ def _merge_diagonals(
     clusters: list[dict] = []
     for seg in segments_mm:
         theta = _angle_normalized(seg)
-        cos_t, sin_t = math.cos(theta), math.sin(theta)
-        # 両端点の perpendicular offset / axial position。線上なので d は両端ほぼ
-        # 一致するが、Hough 由来の微小ブレを均すため平均を取る。
-        d1 = -seg[0] * sin_t + seg[1] * cos_t
-        d2 = -seg[2] * sin_t + seg[3] * cos_t
-        d = (d1 + d2) / 2.0
-        t1 = seg[0] * cos_t + seg[1] * sin_t
-        t2 = seg[2] * cos_t + seg[3] * sin_t
-        axial_min, axial_max = min(t1, t2), max(t1, t2)
+        mx = (seg[0] + seg[2]) / 2.0
+        my = (seg[1] + seg[3]) / 2.0
         placed = False
         for c in clusters:
             mean_angle = c["angle_sum"] / c["count"]
@@ -421,18 +421,36 @@ def _merge_diagonals(
             dtheta = min(dtheta, math.pi - dtheta)  # 0/π wrap 安全側
             if dtheta > angle_tol:
                 continue
-            mean_d = c["d_sum"] / c["count"]
-            if abs(d - mean_d) > distance_tol_mm:
+            cos_m, sin_m = math.cos(mean_angle), math.sin(mean_angle)
+            cx = c["x_sum"] / c["count"]
+            cy = c["y_sum"] / c["count"]
+            # 距離・gap は cluster 平均角を基準角、cluster 重心を基準点に測る。
+            # 線分自身の θ で原点基準に測ると原点から遠い壁で perp が増幅される
+            # (Codex P2)。perp は新線分中点の cluster 線からのずれ。
+            perp = -(mx - cx) * sin_m + (my - cy) * cos_m
+            if abs(perp) > distance_tol_mm:
                 continue
-            gap = max(0.0, c["axial_min"] - axial_max, axial_min - c["axial_max"])
+            # 軸方向 gap も同じ基準角・基準点で測る (overlap なら負、隙間ありなら
+            # 正)。cluster 側の軸範囲は member 端点を都度 mean_angle で射影し直す。
+            c_axials = [
+                (px - cx) * cos_m + (py - cy) * sin_m
+                for s in c["segs"]
+                for (px, py) in ((s[0], s[1]), (s[2], s[3]))
+            ]
+            new_axials = [
+                (px - cx) * cos_m + (py - cy) * sin_m
+                for (px, py) in ((seg[0], seg[1]), (seg[2], seg[3]))
+            ]
+            c_amin, c_amax = min(c_axials), max(c_axials)
+            n_amin, n_amax = min(new_axials), max(new_axials)
+            gap = max(0.0, c_amin - n_amax, n_amin - c_amax)
             if gap > gap_tol_mm:
                 continue
             c["segs"].append(seg)
             c["angle_sum"] += theta
-            c["d_sum"] += d
+            c["x_sum"] += mx
+            c["y_sum"] += my
             c["count"] += 1
-            c["axial_min"] = min(c["axial_min"], axial_min)
-            c["axial_max"] = max(c["axial_max"], axial_max)
             placed = True
             break
         if not placed:
@@ -440,10 +458,9 @@ def _merge_diagonals(
                 {
                     "segs": [seg],
                     "angle_sum": theta,
-                    "d_sum": d,
+                    "x_sum": mx,
+                    "y_sum": my,
                     "count": 1,
-                    "axial_min": axial_min,
-                    "axial_max": axial_max,
                 }
             )
     return [_collapse_diagonal(c["segs"]) for c in clusters]
