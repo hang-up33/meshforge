@@ -644,17 +644,66 @@
     (building_minimal / floor / door / roof / gable / hip / pyramidal /
     furniture / dome.png) の md5 も不変。
 
-- **Step 12-17 以降 (構想)**: 壁厚自動検出・openings / roof の自動抽出 (OpenCV) /
-  Claude API による意味付け / 不等辺四角錐 / mansard / eaves overhang・kind 別の
-  家具形状 / Streamlit UI への building JSON フォーム編集・extract overlay の
-  編集 UI 化 (drag で walls を動かす)・kind 別 overlay 色分け・room の label 推定
-  (kitchen / bathroom 等)・rooms の手動編集 UI。
+## ロードマップ (Step 13〜17): 北極星 = 「編集できる 3D」
 
-### Step 13 以降 (構想のみ、ここでは確定しない)
-- マルチバンド UI 編集（Streamlit に layers フォームを追加）
-- 複数入力対応（複数ページ PDF / 複数 PNG）
-- 領域単位（矩形 / マスク）の高さ編集
-- デモ GIF の作成と差し込み
+Step 12 系の細かい sub-step 積み上げから、**テーマ単位で先にバックログを積む**
+方針に切り替える (毎回 1 個ずつ確定する負担を減らし、抽象度を上げて全体像を
+保つため)。北極星は「**出力した 3D を Bambu Lab Studio のように編集できる**」。
+
+方針メモ (この章の前提):
+- **「編集」のスコープ**: Bambu Lab Studio 的な編集 = パーツ単位の移動 / 回転 /
+  スケール / 配置 / 複製 / 削除が中心であって、生 STL の頂点を彫る系ではない。
+  meshforge は中間 JSON (walls / rooms / openings / roof / furniture) を持つので、
+  「パーツを動かす = JSON を書き換えて `build_mesh` で再生成」という**パラメトリック
+  編集**として実装する。頂点 / boolean レベルのメッシュ彫刻には踏み込まない。
+- **進める順**: エディタ先行 (Step 13 → 14)。13-1 / 13-2 は既存の `build_mesh` +
+  Streamlit でそのまま作れるので着手が軽く、北極星に最短で手が届く。
+- **フロント**: まず Streamlit で限界まで。ドラッグ / 3D ギズモ編集 (13-3, Step 14)
+  で Streamlit が辛くなった時点で「custom component (three.js) を作るか /
+  設計書本来の Avalonia に着手するか」を**必要になってから**判断する
+  (現時点では確定しない)。
+- **「やらないこと」**: 細かい確定はこれまで通り**各タスク着手時**に行う。ここでは
+  バックログの粒度に留め、md5 固定や除外リストは着手 PR で詰める。
+
+### Step 13 — 中間モデルを「編集できる」土台 (パラメトリック編集)
+- **13-1** building JSON を UI のフォーム / 表で編集 (walls / rooms / openings /
+  furniture を追加・削除・数値変更) → 即 `build_mesh` プレビュー
+- **13-2** `extract-walls` の抽出結果を 13-1 エディタに直接流す (抽出 → 編集 →
+  出力 の一気通貫ループ)
+- **13-3** overlay 上で壁を drag 移動・端点編集 (2D 平面エディタ) → JSON 書き戻し
+  ← *Streamlit 限界の分岐点①*
+- **13-4** 編集の undo / redo + 選択ハイライト
+- **13-5** 編集済み JSON の保存 / 読込 (building 用 round-trip。保留中だった
+  `--save-config` 相当)
+
+### Step 14 — Bambu Lab Studio 的な 3D 編集 (パーツ単位 transform)
+- **14-1** 3D プレビューでパーツ (wall / room / furniture) を選択可能にする
+- **14-2** 選択パーツの移動 / 回転 / スケール (ギズモ or 数値) → JSON 反映
+- **14-3** パーツの複製 / 削除
+- **14-4** 配置スナップ (グリッド / 壁面)・寸法表示
+  ← *分岐点②: 専用フロント or Avalonia 着手判断*
+
+### Step 15 — 抽出の精度と範囲 (image → JSON の質)
+- **15-1** 壁厚の自動検出 (Canny 両 edge 間距離。今は固定 CLI 値 `--wall-thickness-mm`)
+- **15-2** openings (door / window) の自動抽出 → `openings[]`
+- **15-3** 図面の寸法線 / 縮尺からスケール (mm/px) 自動推定
+- **15-4** 抽出品質の警告 (閉じてない壁・孤立線・重なり)
+
+### Step 16 — 意味付け (Claude API) ※設計書が当初想定した building の本筋
+- **16-1** 抽出 walls / rooms に Claude API で kind・部屋名 (kitchen / bath 等) を付与
+- **16-2** 部屋ごとの家具を Claude が自動配置提案
+- **16-3** 平面図画像を Claude vision に渡して中間 JSON を直接生成 (OpenCV と二刀流)
+
+### Step 17 — 出力と形状の拡充
+- **17-1** roof 形状追加 (不等辺四角錐 W≠D / mansard / eaves overhang)
+- **17-2** kind 別の家具形状 (cylindrical toilet 等)
+- **17-3** 複数階対応
+- **17-4** 3MF / GLB 出力 (パーツ・色・部屋名を保持 → Bambu で色分け表示)
+- **17-5** 壁 / 床 / 屋根の boolean union で真の一体 watertight 出力
+
+> 旧「構想」項目の行き先: マルチバンド UI 編集 → 13-1 に吸収 / 複数ページ PDF・
+> 複数 PNG → 15 系の入力拡張で都度判断 / 領域単位の高さ編集 → dam モードの拡張
+> として保留 (building 優先) / デモ GIF → Step 10 の宿題として README 整備時に。
 
 ## 各ステップの「やらないこと」リスト (重要)
 
