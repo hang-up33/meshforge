@@ -644,11 +644,42 @@
     (building_minimal / floor / door / roof / gable / hip / pyramidal /
     furniture / dome.png) の md5 も不変。
 
-- **Step 12-17 以降 (構想)**: 壁厚自動検出・openings / roof の自動抽出 (OpenCV) /
-  Claude API による意味付け / 不等辺四角錐 / mansard / eaves overhang・kind 別の
-  家具形状 / Streamlit UI への building JSON フォーム編集・extract overlay の
-  編集 UI 化 (drag で walls を動かす)・kind 別 overlay 色分け・room の label 推定
-  (kitchen / bathroom 等)・rooms の手動編集 UI。
+- **Step 12-17**: `roof.kind="pyramidal"` を不等辺四角錐 (W≠D の矩形 footprint)
+  にも対応させる。Step 12-8 が W==D 正方形に限定していた制約を外し、長方形底の
+  四角錐も同じ仕組みで組めるようにする。
+  - `building/assemble.py` の `_validate_roof` から pyramidal の `width != depth`
+    拒否を削除。`_assemble_pyramidal_roof` は apex を footprint 中心 (xmid, ymid)
+    の真上に置く既存実装のままで W≠D を正しく扱える (頂点 5・面 6 のトポロジは
+    不変、依存追加なし)
+  - サンプル: `samples/building_with_oblique_pyramidal_roof.json` (80×60 mm の
+    建物 + `ridge_height_mm=12` の不等辺四角錐屋根)
+  - 依存追加なし (numpy + trimesh のみ)
+  - **やらないこと**: eaves overhang (軒の出)・任意ポリゴンの gable / hip /
+    pyramidal (L 字・凹形)・複数頂点 (鞍型等)・apex を中心からずらす真の斜
+    四角錐 (oblique で apex が底の重心外)・mansard / 折屋根・屋根と壁の boolean
+    union・屋根の色 / 材質メタデータ・Streamlit UI 露出
+  - **完了条件**: `python -m meshforge convert
+    --config samples/building_with_oblique_pyramidal_roof.json out.stl` で壁 4 本の
+    上に不等辺四角錐屋根が乗った watertight STL が出る (verts=37 faces=54、md5
+    `2e3602fd9fb7db55b8b9b3845a3a7827`)。既存 9 サンプル
+    (building_minimal / building_with_floor / building_with_door /
+    building_with_roof / building_with_gable_roof / building_with_hip_roof /
+    building_with_pyramidal_roof / building_with_furniture / dome.png) の md5 は
+    変わらない (`92487afcdafbd4ce2afa8290514e15fc` /
+    `b9743b8784a3e0bd96a524871bad941f` /
+    `1f5aec60d29cb9b62665b5e620557c14` /
+    `6f5a31afe777fde0b6231389849347a9` /
+    `f4d4839c86a5e8b9c722b9b870c4efdd` /
+    `47cc61992da754d1df8229c48527014d` /
+    `910cdc762cfe63ca3234bbd0f6eeba4e` /
+    `fbfad66c3a17f9e06b144f1ccd1d7f0f` /
+    `e1a9015cb867a476c59d3fe9018fd96c`)。
+
+- **Step 12-18 以降 (構想)**: 壁厚自動検出・openings / roof の自動抽出 (OpenCV) /
+  Claude API による意味付け / mansard / eaves overhang・任意ポリゴンの gable / hip /
+  pyramidal・kind 別の家具形状 / Streamlit UI への building JSON フォーム編集・
+  extract overlay の編集 UI 化 (drag で walls を動かす)・kind 別 overlay 色分け・
+  room の label 推定 (kitchen / bathroom 等)・rooms の手動編集 UI。
 
 ### Step 13 以降 (構想のみ、ここでは確定しない)
 - マルチバンド UI 編集（Streamlit に layers フォームを追加）
@@ -688,6 +719,7 @@
 | Step 12-14 | 編集 UI (drag で walls を動かす / 追加)・kind 別の色分け・壁厚の polygon 描画・rooms / openings / roof / furniture の overlay・重なり / 異常箇所のハイライト・CLI への `--overlay` 出力・overlay 色 / 線幅の widget 化・実 UI 上の overlay の自動撮影 (overlay-preview.png で代替) |
 | Step 12-15 | openings / roof / furniture の自動抽出・部屋の意味分類 (kitchen/bathroom 等)・部屋の家具自動配置・snap tolerance の自動推定・凹形 polygon の特別扱い・部屋同士の重なり / 隔離不能の警告・任意角度・斜め壁の merge・Claude API による label 推定・room polygon の手動編集 UI |
 | Step 12-16 | 壁厚の自動検出・複数 cluster をまたぐ merge・openings / roof / furniture の自動抽出・Claude API 意味付け・斜め壁からの rooms 抽出の特別扱い・Streamlit UI への新 widget 追加・任意角度線分の端点 snap 高度化 |
+| Step 12-17 | eaves overhang・任意ポリゴンの gable / hip / pyramidal・複数頂点 (鞍型等)・apex を中心からずらす真の斜四角錐・mansard / 折屋根・屋根と壁の boolean union・屋根の色 / 材質・Streamlit UI 露出 |
 
 ## 着手判断
 

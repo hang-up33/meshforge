@@ -23,7 +23,7 @@
   "walls":     [ /* Step 12-2 */ ],
   "rooms":     [ /* Step 12-3 */ ],
   "openings":  [ /* Step 12-4 */ ],
-  "roof":     { /* Step 12-5 (flat) / 12-6 (gable) / 12-7 (hip) / 12-8 (pyramidal) */ },
+  "roof":     { /* Step 12-5 (flat) / 12-6 (gable) / 12-7 (hip) / 12-8 (pyramidal) / 12-17 (不等辺四角錐) */ },
   "furniture": [ /* Step 12-9 */ ]
 }
 ```
@@ -154,7 +154,7 @@
 `samples/building_with_door.json` は 80×60 mm の最小建物 (壁厚 4 mm、4 本)
 にドア (12×16 mm) と窓 (16×8 mm、sill 10 mm) を 1 つずつ開けた例。
 
-### `roof` (Step 12-5: flat / 12-6: gable / 12-7: hip / 12-8: pyramidal)
+### `roof` (Step 12-5: flat / 12-6: gable / 12-7: hip / 12-8: pyramidal / 12-17: 不等辺四角錐)
 
 `kind` で枝分かれする。共通必須キーは `kind` と `polygon`。
 
@@ -182,10 +182,10 @@
   "ridge_height_mm": 8.0
 }
 
-// kind = "pyramidal" (Step 12-8)
+// kind = "pyramidal" (Step 12-8: W==D 正方形 / Step 12-17: W≠D 不等辺四角錐)
 {
   "kind": "pyramidal",
-  "polygon": [[x,y], [x,y], [x,y], [x,y]],  // axis-aligned 正方形 (W==D) の 4 隅
+  "polygon": [[x,y], [x,y], [x,y], [x,y]],  // axis-aligned 矩形の 4 隅 (W==D / W≠D 両方可)
   "ridge_height_mm": 12.0                     // 頂点までの高さ (mm)
 }
 ```
@@ -209,9 +209,10 @@
   - **hip**: 棟線の両端を「短辺の半分」ぶん bbox 内側に引き込む。長辺側 2 面
     は台形、短辺側 2 面は三角形になる。`ridge_axis` 方向は **bbox の長辺と
     厳密一致** を要求 (短辺方向に hip の棟は引けない)。6 頂点 8 面。
-  - **pyramidal**: W==D の正方形 footprint のみ。棟が 1 点 (頂点) に縮退する
-    ため `ridge_axis` は無し。底 4 + 頂点 1 の 5 頂点・底 2 + 側面 4 の 6 面。
-    不等辺四角錐 (W≠D) は Step 12-9+ に残す。
+  - **pyramidal**: 棟が 1 点 (頂点) に縮退するため `ridge_axis` は無し。
+    底 4 + 頂点 1 の 5 頂点・底 2 + 側面 4 の 6 面。apex は footprint の中心
+    真上なので W==D の正方形 (Step 12-8) でも W≠D の不等辺四角錐 (Step 12-17)
+    でも同じトポロジで組める。アスペクト比は問わない。
 - 任意キー (`roof` 全体を省略してよい)。roof 無しの JSON は Step 12-4 と
   バイト一致の STL を返す。
 
@@ -230,11 +231,14 @@
 .venv/bin/python -m meshforge convert \
   --config samples/building_with_hip_roof.json out.stl        # hip
 .venv/bin/python -m meshforge convert \
-  --config samples/building_with_pyramidal_roof.json out.stl  # pyramidal
+  --config samples/building_with_pyramidal_roof.json out.stl  # pyramidal (W==D)
+.venv/bin/python -m meshforge convert \
+  --config samples/building_with_oblique_pyramidal_roof.json out.stl  # pyramidal (W≠D)
 ```
 
 flat / gable / hip サンプルは 80×60 mm 矩形 footprint、pyramidal サンプルは
-60×60 mm 正方形 footprint。pyramidal は W==D 限定で棟が中心の頂点 1 点。
+60×60 mm 正方形 footprint (W==D) と 80×60 mm 矩形 footprint (W≠D, 不等辺四角錐)
+の 2 種。pyramidal はどちらも棟が中心の頂点 1 点。
 
 ### `furniture` (Step 12-9 で実装)
 

@@ -13,7 +13,8 @@ wall:
   - `kind="gable"`: triangular prism from an axis-aligned rectangle + ridge_axis
   - `kind="hip"`: 4-slope roof (gable に短辺方向の棟引き込み) from the same
     shape, with ridge in the long axis only
-  - `kind="pyramidal"`: square footprint (W==D) で頂点 1 点・側面 4 枚の四角錐
+  - `kind="pyramidal"`: 矩形 footprint (W==D の正方形 / W≠D の不等辺) で頂点
+    1 点・側面 4 枚の四角錐
 `furniture[]` (Step 12-9, optional) places axis-aligned boxes per room — each
 entry must reference a room_index, and the box sits on top of that room's
 floor slab. Later steps will widen the scope:
@@ -359,9 +360,10 @@ def _carve_openings(wall_box: trimesh.Trimesh, wall_spec: dict, openings: list[d
 # roof は kind ごとに必須キーが分かれる:
 #   flat:       thickness_mm
 #   gable/hip:  ridge_axis + ridge_height_mm
-#   pyramidal:  ridge_height_mm のみ (頂点 1 点なので axis 概念無し)
+#   pyramidal:  ridge_height_mm のみ (頂点 1 点なので axis 概念無し。
+#               W==D 正方形 / W≠D 不等辺の両方を受ける)
 # polygon は明示指定のみ (rooms / walls からの自動推定はしない)。
-# eaves_overhang / 任意ポリゴンの gable / 不等辺四角錐 / mansard は Step 12-9+。
+# eaves_overhang / 任意ポリゴンの gable / mansard は Step 12-18+。
 _ROOF_KINDS = ("flat", "gable", "hip", "pyramidal")
 _ROOF_COMMON_REQUIRED = {"kind", "polygon"}
 _ROOF_FLAT_EXTRA = {"thickness_mm"}
@@ -454,16 +456,9 @@ def _validate_roof(roof) -> str | None:
                         f"({depth}) to be strictly greater than x ({width}); "
                         f"正方形 footprint は kind='pyramidal' を使ってください"
                     )
-        elif kind == "pyramidal":
-            # Step 12-8 では pyramidal を W==D 正方形に限定。不等辺四角錐
-            # (oblique pyramid) は Step 12-9+ に残す。
-            width = xs[1] - xs[0]
-            depth = ys[1] - ys[0]
-            if width != depth:
-                return (
-                    f"roof.polygon for kind='pyramidal' must be a square (W==D), "
-                    f"got width={width} depth={depth}; 不等辺四角錐は Step 12-9+ に残す"
-                )
+        # pyramidal は W==D の正方形 (Step 12-8) でも W≠D の長方形底 (Step 12-17,
+        # 不等辺四角錐) でも頂点 1 点・側面 4 枚で同じトポロジになるので、
+        # footprint のアスペクト比は問わない。
     return None
 
 
@@ -610,8 +605,10 @@ def _assemble_hip_roof(roof, walls, scale: float) -> trimesh.Trimesh:
 
 
 def _assemble_pyramidal_roof(roof, walls, scale: float) -> trimesh.Trimesh:
-    # W==D 正方形 footprint の四角錐。頂点 5 (底 4 + 頂点 1)、面 6 (底 2 三角
-    # + 側面 4 三角) を numpy で手組み。gable / hip と同じく shapely 不要。
+    # 矩形 footprint の四角錐。apex は footprint 中心の真上なので W==D 正方形
+    # (Step 12-8) でも W≠D の不等辺 (Step 12-17) でも頂点 5 (底 4 + 頂点 1)、
+    # 面 6 (底 2 三角 + 側面 4 三角) で同じトポロジ。numpy で手組み、gable / hip
+    # と同じく shapely 不要。
     poly = [(float(x) * scale, float(y) * scale) for x, y in roof["polygon"]]
     xs = sorted({p[0] for p in poly})
     ys = sorted({p[1] for p in poly})

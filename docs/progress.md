@@ -379,6 +379,21 @@ trimesh で組み立てる流れ。**やらないこと** を毎ステップ明�
   convert で watertight (verts=40 faces=60、md5 `fab9da…`)。`floor_plan_simple`
   は斜め線が無いので 12-15 と完全一致 (md5 `5d84a7…` / `54168e…`)。9 サンプル不変。
 
+### Step 12-17: `roof.kind="pyramidal"` を不等辺四角錐 (W≠D) に拡張
+
+- **なぜ**: Step 12-8 は pyramidal を W==D 正方形に限定していたが、apex を
+  footprint 中心の真上に置く実装は W≠D の長方形底でもそのまま正しい四角錐に
+  なる。制約を外すだけで「不等辺四角錐」が同じ仕組みで書ける。
+- **作ったもの**: `_validate_roof` から pyramidal の `width != depth` 拒否を削除
+  (`_assemble_pyramidal_roof` は無変更、頂点 5・面 6 のトポロジ不変)。サンプル
+  `samples/building_with_oblique_pyramidal_roof.json` (80×60 mm 矩形 footprint)。
+- **やらないこと**: eaves overhang / 任意ポリゴンの gable / hip / pyramidal /
+  apex を中心からずらす真の斜四角錐 / mansard / 屋根と壁の boolean union /
+  屋根の色・材質 / Streamlit UI 露出。
+- **完了条件**: oblique サンプルで watertight (verts=37 faces=54、md5 `2e3602…`)。
+  既存 9 サンプル (building_minimal / floor / door / roof / gable / hip /
+  pyramidal / furniture / dome.png) の md5 は不変。
+
 ## 開発スタイルの原則 (第三者向け説明用)
 
 - **1 ステップ = 動く成果物 1 個**: 抽象化やテスト基盤は「必要になってから」。
