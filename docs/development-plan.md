@@ -667,7 +667,9 @@ Step 12 系の細かい sub-step 積み上げから、**テーマ単位で先に
 
 ### Step 13 — 中間モデルを「編集できる」土台 (パラメトリック編集)
 - **13-1** building JSON を UI のフォーム / 表で編集 (walls / rooms / openings /
-  furniture を追加・削除・数値変更) → 即 `build_mesh` プレビュー
+  furniture を追加・削除・数値変更) → 即 `build_mesh` プレビュー。
+  Step 12 系と同じく **テーブル単位の小スライス** に割って積む
+  (13-1a walls → 13-1b rooms → 13-1c openings → 13-1d furniture)。詳細は下記。
 - **13-2** `extract-walls` の抽出結果を 13-1 エディタに直接流す (抽出 → 編集 →
   出力 の一気通貫ループ)
 - **13-3** overlay 上で壁を drag 移動・端点編集 (2D 平面エディタ) → JSON 書き戻し
@@ -675,6 +677,55 @@ Step 12 系の細かい sub-step 積み上げから、**テーマ単位で先に
 - **13-4** 編集の undo / redo + 選択ハイライト
 - **13-5** 編集済み JSON の保存 / 読込 (building 用 round-trip。保留中だった
   `--save-config` 相当)
+
+- **Step 13-1a**: Streamlit Building タブの "Upload JSON" で読んだ中間 JSON の
+  `walls[]` を `st.data_editor` の表で編集 (値変更 / 行追加 / 行削除) してから
+  `build_mesh` に流せるようにする。北極星「編集できる 3D」へのエディタ先行
+  (13-1) の最初のスライス。
+  - `ui_streamlit.py`:
+    - `_building_spec_from_json_upload` を「アップロード → schema 検証 →
+      walls 表編集 → Build ボタン」の流れに作り替える。これまでの
+      「アップロード → Convert ボタンで即 build」は表編集を挟む形に置き換わる
+      (rooms / openings / roof / furniture など walls 以外のトップレベルキーは
+      そのまま素通しで保持)
+    - `_walls_to_df` / `_df_to_walls` を新設。`walls[]` の入れ子 `start`/`end`
+      を `start_x / start_y / end_x / end_y` の平坦列に展開し、
+      `thickness_mm` / `height_mm` / `label` と合わせて表にする。逆変換で
+      `start`/`end` を組み直す。座標・寸法は float に正規化 (build_mesh の
+      幾何は float 計算なので無編集なら md5 不変)
+    - `st.data_editor(num_rows="dynamic")` で行追加・削除を賄う。末尾に
+      できる完全空行は drop。数値が NaN/欠損の行は build_mesh の既存検証に
+      委ねて `st.error`
+  - 依存追加なし (`pandas` は streamlit 同梱)
+  - **やらないこと**: rooms / openings / roof / furniture の表編集
+    (13-1b 以降)・"Extract from image" 経路へのエディタ接続 (13-2)・
+    overlay 上の drag / 端点編集 (13-3)・undo / redo (13-4)・編集 JSON の
+    round-trip 保存 (13-5、ただし build した STL はダウンロード可)・空
+    walls からの新規ゼロ作成 (既存の非空 walls を編集する用途に限定)・
+    壁削除 / 並べ替えで openings の `wall_index` が範囲外になるケースの
+    自動補正 (build_mesh の検証エラーを `st.error` で見せる)・CLI 変更・
+    列の型 / 範囲の独自検証 (build_mesh に委ねる)
+  - **スクショ運用**: Building タブの "Upload JSON" に表が増えるので
+    `docs/screenshots/editor.png` を撮り直す (AGENTS.md の UI 変更時運用)。
+    ただし Streamlit file_uploader は headless CDP からファイルを流し込め
+    ない事情 (Step 12-13/14 と同じ) があり、表は JSON アップロード後にしか
+    出ない。未アップロード状態の現行 editor.png を維持し、表が出た状態は
+    PR 本文のスクショで示す
+  - **完了条件**: ブラウザの Building タブ "Upload JSON" で
+    `samples/building_minimal.json` を読むと walls 4 行の編集表が出る。
+    無編集で Build すると STL md5 は `92487afcdafbd4ce2afa8290514e15fc`
+    (CLI と一致)。値編集 / 行追加 / 行削除して Build すると編集後の STL が
+    プレビュー / ダウンロードできる。既存 8 building サンプル +
+    `dome.png` の CLI 出力 md5 は不変
+    (`92487afcdafbd4ce2afa8290514e15fc` /
+    `b9743b8784a3e0bd96a524871bad941f` /
+    `1f5aec60d29cb9b62665b5e620557c14` /
+    `6f5a31afe777fde0b6231389849347a9` /
+    `f4d4839c86a5e8b9c722b9b870c4efdd` /
+    `47cc61992da754d1df8229c48527014d` /
+    `910cdc762cfe63ca3234bbd0f6eeba4e` /
+    `fbfad66c3a17f9e06b144f1ccd1d7f0f` /
+    `e1a9015cb867a476c59d3fe9018fd96c`)。
 
 ### Step 14 — Bambu Lab Studio 的な 3D 編集 (パーツ単位 transform)
 - **14-1** 3D プレビューでパーツ (wall / room / furniture) を選択可能にする
@@ -737,6 +788,7 @@ Step 12 系の細かい sub-step 積み上げから、**テーマ単位で先に
 | Step 12-14 | 編集 UI (drag で walls を動かす / 追加)・kind 別の色分け・壁厚の polygon 描画・rooms / openings / roof / furniture の overlay・重なり / 異常箇所のハイライト・CLI への `--overlay` 出力・overlay 色 / 線幅の widget 化・実 UI 上の overlay の自動撮影 (overlay-preview.png で代替) |
 | Step 12-15 | openings / roof / furniture の自動抽出・部屋の意味分類 (kitchen/bathroom 等)・部屋の家具自動配置・snap tolerance の自動推定・凹形 polygon の特別扱い・部屋同士の重なり / 隔離不能の警告・任意角度・斜め壁の merge・Claude API による label 推定・room polygon の手動編集 UI |
 | Step 12-16 | 壁厚の自動検出・複数 cluster をまたぐ merge・openings / roof / furniture の自動抽出・Claude API 意味付け・斜め壁からの rooms 抽出の特別扱い・Streamlit UI への新 widget 追加・任意角度線分の端点 snap 高度化 |
+| Step 13-1a | rooms / openings / roof / furniture の表編集・Extract 経路へのエディタ接続・overlay drag / 端点編集・undo / redo・編集 JSON の round-trip 保存・空 walls からの新規作成・openings `wall_index` の自動補正・CLI 変更・列の独自型/範囲検証 |
 
 ## 着手判断
 
