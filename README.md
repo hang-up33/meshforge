@@ -125,6 +125,19 @@ Step 11 で「編集可能 3D」の最初の一歩として、明度バンドご
 | 12-2 | 手書き JSON `walls[]` → 壁 STL | ✅ 完了（`samples/building_minimal.json` で 80×60×24 mm の壁箱が出る） |
 | 12-3 | 手書き JSON `rooms[]` → 床スラブ | ✅ 完了（`samples/building_with_floor.json` で 2 部屋ぶんの床を壁の中に敷ける。`pip install -e '.[building]'` で shapely + mapbox_earcut が要る） |
 | 12-4 | 手書き JSON `openings[]` → 壁にドア / 窓のくり抜き | ✅ 完了（`samples/building_with_door.json` で 4 本壁にドア 1 + 窓 1 を boolean で開ける。`pip install -e '.[building]'` で manifold3d が要る） |
+| 12-5 | `roof` (flat) 平屋根スラブ | ✅ 完了（`samples/building_with_roof.json`、footprint は明示 polygon のみ） |
+| 12-6 | `roof.kind = gable`（切妻） | ✅ 完了（6 頂点 8 面の三角柱を numpy で手組み、axis-aligned 矩形） |
+| 12-7 | `roof.kind = hip`（寄棟） | ✅ 完了（gable と検証共有、棟線を内側に引き込む） |
+| 12-8 | `roof.kind = pyramidal`（四角錐） | ✅ 完了（W==D 正方形限定、5 頂点 6 面） |
+| 12-9 | `furniture[]`（家具） | ✅ 完了（`room_index` で部屋に紐づく直方体、Z 軸回転 + 床上に配置） |
+| 12-10 | Streamlit UI に building タブ | ✅ 完了（`st.tabs` で「Heightmap (dam)」「Building」の 2 タブ化） |
+| 12-11 | `extract-walls` サブコマンド | ✅ 完了（OpenCV HoughLinesP で PNG/PDF → `walls[]` JSON。`pip install -e '.[vision]'`） |
+| 12-12 | `walls[]` 線分マージ（axis-aligned） | ✅ 完了（Canny の両 edge を 1 本に collapse、10 → 5 walls） |
+| 12-13 | UI に `extract-walls` 露出 | ✅ 完了（Building タブに "Extract from image" を追加） |
+| 12-14 | extract 結果の line overlay | ✅ 完了（検出 `walls[]` の中心線を入力画像に赤で重ね描き） |
+| 12-15 | `extract-walls --with-rooms` | ✅ 完了（walls の閉路を shapely polygonize で `rooms[]` に自動生成） |
+| 12-16 | 斜め線分のマージ | ✅ 完了（任意角度に一般化、near-collinear な斜め壁も 1 本に統合） |
+| 13-1a | Building タブで `walls[]` をテーブル編集 | ✅ 完了（`st.data_editor` で行追加 / 削除 / 値編集 → Build。「編集可能 3D」の UI 第一歩） |
 
 ## 工数（開発時間の目安）
 
