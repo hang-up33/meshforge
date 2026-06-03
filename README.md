@@ -126,6 +126,70 @@ Step 11 で「編集可能 3D」の最初の一歩として、明度バンドご
 | 12-3 | 手書き JSON `rooms[]` → 床スラブ | ✅ 完了（`samples/building_with_floor.json` で 2 部屋ぶんの床を壁の中に敷ける。`pip install -e '.[building]'` で shapely + mapbox_earcut が要る） |
 | 12-4 | 手書き JSON `openings[]` → 壁にドア / 窓のくり抜き | ✅ 完了（`samples/building_with_door.json` で 4 本壁にドア 1 + 窓 1 を boolean で開ける。`pip install -e '.[building]'` で manifold3d が要る） |
 
+## 工数（開発時間の目安）
+
+git のコミット時刻から推定したタスク別の作業時間。**実測のタイムトラッキング
+ではなく、コミット間隔からの推定値**なので、絶対値ではなく相対的な目安として読む。
+
+- 期間: **2026-05-24 〜 2026-05-30（6 日間）** / 推定アクティブ合計: **約 22.6h**
+- 日別（アクティブ）: 05-24 ≈ 3.6h / 05-25 ≈ 4.2h / 05-26 ≈ 3.6h /
+  05-27 ≈ 2.8h / 05-28 ≈ 3.2h / 05-29 ≈ 4.4h / 05-30 ≈ 0.9h
+
+### フェーズ別
+
+| フェーズ | 内容 | 推定工数 |
+| --- | --- | ---: |
+| Phase 1 | コアパイプライン（Step 1〜4）+ 計画・環境整備 | 7.0h |
+| Phase 2 | パッケージ化 / Streamlit UI / 公開デモ / OSS 整備（Step 5〜10 + deploy） | 4.6h |
+| Phase 3 | 編集可能 3D の一歩（Step 11）+ `/codex-loop` 整備 | 1.3h |
+| Phase 4 | building モード 16 連続 PR（Step 12-1〜12-16）+ progress.md | 9.8h |
+| **合計** | | **約 22.6h** |
+
+### タスク別
+
+| タスク | PR | 推定工数 |
+| --- | --- | ---: |
+| 環境 / Claude+Codex レビュー基盤 | — | 1.5h |
+| 計画書・README 整備 | [#1](https://github.com/hang-up33/meshforge/pull/1)〜[#3](https://github.com/hang-up33/meshforge/pull/3) | 1.9h |
+| Step 1: PNG → STL 最小スクリプト | [#4](https://github.com/hang-up33/meshforge/pull/4) | 0.4h |
+| Step 2: `--invert` / `--threshold` | [#5](https://github.com/hang-up33/meshforge/pull/5) | 0.5h |
+| Step 3: PDF 入力対応 | [#7](https://github.com/hang-up33/meshforge/pull/7) | 0.2h |
+| Step 4: 設定の JSON 化 | [#8](https://github.com/hang-up33/meshforge/pull/8) | 2.5h |
+| Step 5: パッケージ化 + `convert` | [#9](https://github.com/hang-up33/meshforge/pull/9) | 0.2h |
+| Step 6: Streamlit 簡易 GUI | [#10](https://github.com/hang-up33/meshforge/pull/10) | 0.8h |
+| Streamlit Cloud デプロイ | [#11](https://github.com/hang-up33/meshforge/pull/11) / [#12](https://github.com/hang-up33/meshforge/pull/12) | 1.1h |
+| Step 7: 3D プレビュー | [#13](https://github.com/hang-up33/meshforge/pull/13) | 0.7h |
+| Step 8: パラメータプリセット UI | [#14](https://github.com/hang-up33/meshforge/pull/14) | 1.0h |
+| Step 9: UI エラー処理強化 | [#15](https://github.com/hang-up33/meshforge/pull/15) | 0.1h |
+| Step 10: OSS リリース整備 | [#16](https://github.com/hang-up33/meshforge/pull/16) | 0.8h |
+| Step 11: 高さレイヤー（マルチバンド） | [#17](https://github.com/hang-up33/meshforge/pull/17) | 0.6h |
+| `/codex-loop` 自走ループ整備 | [#18](https://github.com/hang-up33/meshforge/pull/18) | 0.7h |
+| Step 12-1: building 骨格 + JSON スキーマ | [#19](https://github.com/hang-up33/meshforge/pull/19) | 1.1h |
+| Step 12-2: `walls[]` → 壁 STL | [#20](https://github.com/hang-up33/meshforge/pull/20) | 0.2h |
+| Step 12-3: `rooms[]` → 床スラブ | [#21](https://github.com/hang-up33/meshforge/pull/21) | 1.2h |
+| Step 12-4: `openings[]` → くり抜き | [#22](https://github.com/hang-up33/meshforge/pull/22) | 0.2h |
+| Step 12-5: `roof` (flat) | [#23](https://github.com/hang-up33/meshforge/pull/23) | 0.5h |
+| Step 12-6: `roof` gable（切妻） | [#24](https://github.com/hang-up33/meshforge/pull/24) | 0.1h |
+| Step 12-7: `roof` hip（寄棟） | [#25](https://github.com/hang-up33/meshforge/pull/25) | 0.1h |
+| Step 12-8: `roof` pyramidal（四角錐） | [#26](https://github.com/hang-up33/meshforge/pull/26) | 0.2h |
+| Step 12-9: `furniture[]` | [#27](https://github.com/hang-up33/meshforge/pull/27) | 0.1h |
+| Step 12-10: UI に building タブ | [#28](https://github.com/hang-up33/meshforge/pull/28) | 0.3h |
+| Step 12-11: `extract-walls` サブコマンド | [#29](https://github.com/hang-up33/meshforge/pull/29) | 0.5h |
+| Step 12-12: `walls[]` 線分マージ | [#30](https://github.com/hang-up33/meshforge/pull/30) | 0.4h |
+| Step 12-13: UI に `extract-walls` 露出 | [#31](https://github.com/hang-up33/meshforge/pull/31) | 0.4h |
+| docs/progress.md 追加 | [#32](https://github.com/hang-up33/meshforge/pull/32) | 1.0h |
+| Step 12-14: extract 結果の line overlay | [#33](https://github.com/hang-up33/meshforge/pull/33) | 1.1h |
+| Step 12-15: `extract-walls --with-rooms` | [#34](https://github.com/hang-up33/meshforge/pull/34) | 0.6h |
+| Step 12-16: 斜め線分のマージ | [#35](https://github.com/hang-up33/meshforge/pull/35) | 1.6h |
+
+> **推定方法**: 全コミットを時系列に並べ、間隔が 2 時間以内なら同一セッションと
+> みなして間隔をそのタスクの作業時間に積算する。2 時間超は別セッションとして
+> 切り、各セッション先頭のコミットに 30 分のウォームアップを加算。マージコミットは
+> 事務的操作として工数から除外（レビュー待ち時間も含まれないため、計画→実装→
+> レビュー反映の一気通貫ではなく「手を動かしていた時間」に近い）。AI 支援開発で
+> 1 コミットに収束したタスクは「直前コミットからの経過時間」がそのまま値になり、
+> 実作業より短めに出ることがある（例: Step 9 / Step 12-6 等）。
+
 ## フォルダ構成
 
 ```
