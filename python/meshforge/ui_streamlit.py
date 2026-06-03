@@ -21,6 +21,11 @@ Step 12-14 で "Extract from image" の結果を入力画像に重ねて表示�
 overlay を追加。`_render_extract_overlay` が PIL で grayscale 入力を RGB
 化し、walls[] の `start`/`end` (px) を結ぶ赤線を描く。パラメータ
 (threshold / min_length_mm / merge_*) の試行錯誤を画像で確認できる。
+
+Step 13-1a で "Upload JSON" の walls[] を `st.data_editor` の表で編集してから
+`build_mesh` に流せるようにした (パラメトリック編集の最初のスライス)。
+walls 以外のトップレベルキー (rooms / openings / roof / furniture) はそのまま
+保持する。無編集なら float 正規化を挟んでも幾何は不変で、CLI 出力と md5 一致。
 """
 
 import importlib.util
@@ -29,6 +34,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pandas as pd
 from PIL import Image, ImageDraw
 
 # 8 megapixel cap. A4 @ 300 DPI is ~8.7 Mpx, so anything beyond this is
@@ -330,12 +336,68 @@ def _render_building_tab() -> None:
     _render_stl_result(stl_bytes, download_name, preview_key="building-stl-preview")
 
 
+# Step 13-1a: flatten the nested `start`/`end` points into scalar columns so
+# `st.data_editor` can show one wall per row. build_mesh only reads start / end
+# / thickness_mm / height_mm (+ optional label), so these columns round-trip the
+# whole mesh-relevant payload.
+_WALL_COLUMNS = [
+    "label",
+    "start_x",
+    "start_y",
+    "end_x",
+    "end_y",
+    "thickness_mm",
+    "height_mm",
+]
+_WALL_NUMERIC_COLUMNS = _WALL_COLUMNS[1:]
+
+
+def _walls_to_df(walls: list[dict]) -> pd.DataFrame:
+    rows = []
+    for w in walls:
+        start = w.get("start", [0.0, 0.0])
+        end = w.get("end", [0.0, 0.0])
+        rows.append(
+            {
+                "label": w.get("label", ""),
+                "start_x": float(start[0]),
+                "start_y": float(start[1]),
+                "end_x": float(end[0]),
+                "end_y": float(end[1]),
+                "thickness_mm": float(w.get("thickness_mm", 0.0)),
+                "height_mm": float(w.get("height_mm", 0.0)),
+            }
+        )
+    return pd.DataFrame(rows, columns=_WALL_COLUMNS)
+
+
+def _df_to_walls(df: pd.DataFrame) -> list[dict]:
+    # num_rows="dynamic" leaves a trailing all-blank row when the user clicks
+    # "add" without filling it; drop rows where every numeric cell is missing.
+    df = df.dropna(how="all", subset=_WALL_NUMERIC_COLUMNS)
+    walls: list[dict] = []
+    for _, r in df.iterrows():
+        wall: dict = {
+            "start": [float(r["start_x"]), float(r["start_y"])],
+            "end": [float(r["end_x"]), float(r["end_y"])],
+            "thickness_mm": float(r["thickness_mm"]),
+            "height_mm": float(r["height_mm"]),
+        }
+        label = r["label"]
+        if isinstance(label, str) and label.strip():
+            wall["label"] = label
+        walls.append(wall)
+    return walls
+
+
 def _building_spec_from_json_upload() -> tuple[dict, str] | None:
     st.markdown(
         "中間 JSON (`schema_version: 1`、`walls[]` 必須) をアップロードして"
         " STL を生成します。スキーマは "
         "[`docs/building-schema.md`](https://github.com/hang-up33/meshforge/blob/main/docs/building-schema.md)"
         " 参照。`samples/building_*.json` をそのままドロップすれば動きます。"
+        " アップロード後は walls[] を下の表で編集してから Build できます"
+        " (rooms / openings / roof / furniture はそのまま保持)。"
     )
     uploaded = st.file_uploader(
         "Building intermediate JSON",
@@ -343,13 +405,7 @@ def _building_spec_from_json_upload() -> tuple[dict, str] | None:
         key="building-uploader",
         help="walls / rooms / openings / roof / furniture を含む中間 JSON。",
     )
-    submitted = st.button(
-        "Convert",
-        type="primary",
-        disabled=uploaded is None,
-        key="building-convert",
-    )
-    if not (submitted and uploaded is not None):
+    if uploaded is None:
         return None
 
     raw = uploaded.getvalue()
@@ -366,6 +422,41 @@ def _building_spec_from_json_upload() -> tuple[dict, str] | None:
             f"building JSON: schema_version must be 1, got {spec.get('schema_version')!r}"
         )
         return None
+
+    walls = spec.get("walls")
+    if not isinstance(walls, list) or not walls:
+        st.error(
+            "building JSON: walls[] が非空のリストである必要があります"
+            f" (got {type(walls).__name__})"
+        )
+        return None
+
+    st.markdown(
+        "**Walls** — 値の編集 / 行の追加・削除ができます。編集して **Build** を"
+        " 押すと反映された STL が出ます。"
+    )
+    with st.form("building-json-edit"):
+        edited = st.data_editor(
+            _walls_to_df(walls),
+            num_rows="dynamic",
+            use_container_width=True,
+            key="building-walls-editor",
+            column_config={
+                "label": st.column_config.TextColumn("label", help="任意のラベル (メッシュには焼かない)"),
+                "start_x": st.column_config.NumberColumn("start_x"),
+                "start_y": st.column_config.NumberColumn("start_y"),
+                "end_x": st.column_config.NumberColumn("end_x"),
+                "end_y": st.column_config.NumberColumn("end_y"),
+                "thickness_mm": st.column_config.NumberColumn("thickness_mm", min_value=0.0),
+                "height_mm": st.column_config.NumberColumn("height_mm", min_value=0.0),
+            },
+        )
+        submitted = st.form_submit_button("Build", type="primary")
+    if not submitted:
+        return None
+
+    spec = dict(spec)
+    spec["walls"] = _df_to_walls(edited)
     return spec, uploaded.name
 
 
