@@ -137,13 +137,21 @@ def _render_stl_result(stl_bytes: bytes, download_name: str, preview_key: str) -
 
 
 def _downscale_to_fit(image: Image.Image, max_pixels: int) -> tuple[Image.Image, float]:
-    """Shrink `image` so width*height <= max_pixels, preserving aspect ratio.
+    """Shrink `image` isotropically so width*height <= max_pixels.
 
     Returns (image, scale) where scale is the linear shrink factor (<= 1.0);
-    callers divide pixel_mm by it to keep the physical mesh area unchanged
-    (and both side lengths too, when the aspect ratio survives rounding).
+    callers divide pixel_mm by it to keep the physical mesh size unchanged. The
+    resize is isotropic, so the aspect ratio is preserved and that single scale
+    restores both side lengths (to within sub-pixel rounding).
+
     iPhone photos are ~12 Mpx — over the cap — so without this the dam tab
     dead-ends on a "too large" error with no in-app way to recover.
+
+    Raises ValueError when the input is too elongated to fit the cap without
+    breaking the aspect ratio — i.e. its ratio exceeds ~max_pixels:1, so the
+    short side would round below 1px. Distorting such a strip anisotropically
+    would silently throw off the printed dimensions, so we reject it instead.
+    No real photo or floor plan reaches a >2,000,000:1 ratio.
     """
     pixels = image.width * image.height
     if pixels <= max_pixels:
@@ -151,22 +159,20 @@ def _downscale_to_fit(image: Image.Image, max_pixels: int) -> tuple[Image.Image,
     scale = (max_pixels / pixels) ** 0.5
     new_w = max(1, int(image.width * scale))
     new_h = max(1, int(image.height * scale))
-    # Clamping a near-zero axis up to 1 (the max(1, ...) above) can push
-    # width*height back over the cap on extreme strips — a 1×1e8 px input would
-    # otherwise stay ~14 Mpx and defeat the OOM guard. Shrink the longer axis to
-    # fit the remaining budget (one axis is already 1 here, so this is exact).
+    # int() only truncates down, so new_w*new_h exceeds the cap only when the
+    # max(1, ...) above raised a side that rounded to 0 — meaning an isotropic
+    # shrink can't fit the cap at all. Reject rather than distort.
     if new_w * new_h > max_pixels:
-        if new_w >= new_h:
-            new_w = max(1, max_pixels // new_h)
-        else:
-            new_h = max(1, max_pixels // new_w)
-    new_size = (new_w, new_h)
-    resized = image.resize(new_size, Image.LANCZOS)
-    # Recompute the scale from the rounded *area* (geometric mean of the two
-    # per-axis scales), not width alone: heightmap_to_mesh uses one pixel_mm
-    # for both axes, so an area-preserving factor keeps the physical size right
-    # even for extreme aspect ratios where int() rounds the axes by different
-    # fractions (e.g. a 10×1e6 px strip rounds width far harder than height).
+        raise ValueError(
+            "アスペクト比が極端すぎて "
+            f"{max_pixels / 1_000_000:.0f} Mpx 以内に縮小できません "
+            f"({image.width}×{image.height})。"
+        )
+    resized = image.resize((new_w, new_h), Image.LANCZOS)
+    # Derive the returned scale from the rounded *area* (geometric mean of the
+    # two per-axis scales). With an isotropic shrink the two axis scales match,
+    # so this equals either one; using the area keeps it exact under sub-pixel
+    # rounding without favoring width over height.
     return resized, (new_w * new_h / pixels) ** 0.5
 
 
@@ -314,24 +320,29 @@ def _render_dam_tab() -> None:
                 # printed model keeps the same physical size — only surface
                 # detail drops, which is unavoidable under the RAM cap anyway.
                 orig_w, orig_h = image.width, image.height
-                image, scale = _downscale_to_fit(image, _MAX_PIXELS)
-                effective_pixel_mm = pixel_mm / scale
-                if scale < 1.0:
-                    st.info(
-                        "メモリ節約のため入力を自動で縮小しました "
-                        f"({orig_w}×{orig_h} = {orig_w * orig_h / 1_000_000:.1f} Mpx → "
-                        f"{image.width}×{image.height} ≈ {_MAX_PIXELS / 1_000_000:.0f} Mpx)。"
-                        " 物理サイズを保つため pixel_mm を "
-                        f"{pixel_mm:.3f} → {effective_pixel_mm:.3f} に自動調整しています。"
+                try:
+                    image, scale = _downscale_to_fit(image, _MAX_PIXELS)
+                except ValueError as e:
+                    # Degenerate strip that can't fit the cap without distorting.
+                    st.error(str(e))
+                else:
+                    effective_pixel_mm = pixel_mm / scale
+                    if scale < 1.0:
+                        st.info(
+                            "メモリ節約のため入力を自動で縮小しました "
+                            f"({orig_w}×{orig_h} = {orig_w * orig_h / 1_000_000:.1f} Mpx → "
+                            f"{image.width}×{image.height} ≈ {_MAX_PIXELS / 1_000_000:.0f} Mpx)。"
+                            " 物理サイズを保つため pixel_mm を "
+                            f"{pixel_mm:.3f} → {effective_pixel_mm:.3f} に自動調整しています。"
+                        )
+                    heights = to_heights(
+                        image,
+                        invert=invert,
+                        threshold=threshold if use_threshold else None,
+                        max_height_mm=max_height_mm,
                     )
-                heights = to_heights(
-                    image,
-                    invert=invert,
-                    threshold=threshold if use_threshold else None,
-                    max_height_mm=max_height_mm,
-                )
-                mesh = heightmap_to_mesh(heights, pixel_mm=effective_pixel_mm, base_mm=base_mm)
-                stl_bytes = serialize(mesh)
+                    mesh = heightmap_to_mesh(heights, pixel_mm=effective_pixel_mm, base_mm=base_mm)
+                    stl_bytes = serialize(mesh)
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
