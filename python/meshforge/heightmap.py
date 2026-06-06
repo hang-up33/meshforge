@@ -1,4 +1,4 @@
-"""Image loading and heightmap construction (PNG/PDF -> float height grid)."""
+"""Image loading and heightmap construction (PNG/JPEG/PDF -> float height grid)."""
 
 import numpy as np
 from PIL import Image
@@ -20,6 +20,9 @@ def rasterize_pdf(path: str, dpi: float) -> Image.Image:
 def load_grayscale(path: str, dpi: float) -> Image.Image:
     if path.lower().endswith(".pdf"):
         return rasterize_pdf(path, dpi)
+    # Pillow decodes PNG / JPEG (and other raster formats) here; convert("L")
+    # collapses anything — including JPEG's YCbCr — down to the grayscale the
+    # heightmap path expects.
     return Image.open(path).convert("L")
 
 

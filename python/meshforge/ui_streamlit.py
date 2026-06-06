@@ -13,7 +13,7 @@ Step 12-10 で building モード用のタブを追加。dam (Heightmap) タブ�
 を返す (md5 一致)。
 
 Step 12-13 で Building タブに「Source」radio を追加。"Upload JSON" は従来
-通りの手書き / 既存 JSON 直接読み込み、"Extract from image" は PNG/PDF を
+通りの手書き / 既存 JSON 直接読み込み、"Extract from image" は PNG/JPEG/PDF を
 アップロードして `building.extract.extract_walls` を呼び中間 JSON を生成 →
 同じ `build_mesh` フローへ流す。Extract 結果の JSON は別途ダウンロード可能。
 
@@ -68,7 +68,7 @@ from meshforge.stl import serialize, summary
 
 st.set_page_config(page_title="meshforge", layout="centered")
 st.title("meshforge")
-st.caption("PNG / PDF heightmap → 3D printable binary STL")
+st.caption("PNG / JPEG / PDF heightmap → 3D printable binary STL")
 
 # Presets nudge the four most input-dependent parameters (invert, threshold
 # usage + value, max_height_mm, base_mm). pixel_mm / dpi vary much less by
@@ -134,8 +134,8 @@ def _render_stl_result(stl_bytes: bytes, download_name: str, preview_key: str) -
 
 def _render_dam_tab() -> None:
     uploaded = st.file_uploader(
-        "Input file (PNG or PDF)",
-        type=["png", "pdf"],
+        "Input file (PNG, JPEG or PDF)",
+        type=["png", "jpg", "jpeg", "pdf"],
         help="PDF input rasterizes the first page via PyMuPDF (install with `pip install -e '.[pdf]'`).",
         key="dam-uploader",
     )
@@ -268,7 +268,7 @@ def _render_dam_tab() -> None:
                 # without dumping a full traceback to the user.
                 st.error(
                     f"入力ファイルを読み込めませんでした "
-                    f"({type(e).__name__}: {e})。サポート形式は PNG / PDF です。"
+                    f"({type(e).__name__}: {e})。サポート形式は PNG / JPEG / PDF です。"
                 )
             else:
                 pixels = image.width * image.height
@@ -306,7 +306,7 @@ def _render_building_tab() -> None:
         horizontal=True,
         key="building-source",
         help="Upload JSON は手書き / 既存の building 中間 JSON を直接読む。"
-             "Extract from image は PNG/PDF 平面図から walls[] を自動生成する。",
+             "Extract from image は PNG/JPEG/PDF 平面図から walls[] を自動生成する。",
     )
 
     if source == "Upload JSON":
@@ -517,14 +517,14 @@ def _render_extract_overlay(
 
 def _building_spec_from_image_extract() -> tuple[dict, str] | None:
     st.markdown(
-        "PNG / PDF 平面図から `walls[]` を自動抽出して STL を生成します。"
+        "PNG / JPEG / PDF 平面図から `walls[]` を自動抽出して STL を生成します。"
         " CLI の `meshforge extract-walls` と同じパラメータが使えます。"
         " rooms / openings / roof / furniture は出さないので、必要なら抽出 JSON を"
         " ダウンロードして手で追記してください。"
     )
     uploaded = st.file_uploader(
-        "Floor plan image (PNG or PDF)",
-        type=["png", "pdf"],
+        "Floor plan image (PNG, JPEG or PDF)",
+        type=["png", "jpg", "jpeg", "pdf"],
         key="building-extract-uploader",
         help="PDF 入力時は `pip install -e '.[vision,pdf]'` が必要。",
     )
@@ -667,7 +667,7 @@ def _building_spec_from_image_extract() -> tuple[dict, str] | None:
                 # dam タブと同じく型名を添えて UI を継続させる。
                 st.error(
                     f"入力ファイルを読み込めませんでした "
-                    f"({type(e).__name__}: {e})。サポート形式は PNG / PDF です。"
+                    f"({type(e).__name__}: {e})。サポート形式は PNG / JPEG / PDF です。"
                 )
                 return None
         # Step 12-14: render overlay while tmp_path is still alive.
