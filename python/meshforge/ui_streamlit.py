@@ -38,13 +38,14 @@ import pandas as pd
 from PIL import Image, ImageDraw
 
 # Downscale target for the dam tab. The mesh is one cell per pixel, so the STL
-# size is set purely by pixel count: ~2 Mpx -> ~8M triangles -> ~400 MB STL,
-# while ~8 Mpx already hits ~1.6 GB and OOMs the 1 GB Streamlit Cloud instance
-# (the mesh arrays and the serialized STL bytes coexist during write). A photo
-# turned into a relief needs far less than 8 Mpx anyway, so oversized raster
-# input (e.g. a 12 Mpx iPhone JPEG) is downscaled to this via _downscale_to_fit
-# rather than rejected.
-_MAX_PIXELS = 2_000_000
+# size is set purely by pixel count: ~1 Mpx -> ~4M triangles -> ~200 MB STL,
+# which stays well clear of the 1 GB Streamlit Cloud instance (the mesh arrays
+# and the serialized STL bytes coexist during write) and is light enough to
+# preview and download in the browser. ~8 Mpx would hit ~1.6 GB and OOM. A photo
+# turned into a relief needs far less detail than that anyway, so oversized
+# raster input (e.g. a 12 Mpx iPhone JPEG) is downscaled to this via
+# _downscale_to_fit rather than rejected.
+_MAX_PIXELS = 1_000_000
 
 # Cap DPI at 600. PyMuPDF will happily rasterize at multi-thousand DPI and
 # instantly OOM, so we clamp before the request reaches load_grayscale.
@@ -151,7 +152,7 @@ def _downscale_to_fit(image: Image.Image, max_pixels: int) -> tuple[Image.Image,
     breaking the aspect ratio — i.e. its ratio exceeds ~max_pixels:1, so the
     short side would round below 1px. Distorting such a strip anisotropically
     would silently throw off the printed dimensions, so we reject it instead.
-    No real photo or floor plan reaches a >2,000,000:1 ratio.
+    No real photo or floor plan reaches such an extreme (>~1,000,000:1) ratio.
     """
     pixels = image.width * image.height
     if pixels <= max_pixels:
