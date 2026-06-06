@@ -96,6 +96,9 @@ meshforge は、図面をいきなり立体に「押し出す」のではなく�
 .venv/bin/python -m meshforge convert samples/dome.png samples/dome.stl
 ```
 
+入力は PNG だけでなく JPEG（`.jpg` / `.jpeg`）も使えます。拡張子が `.pdf`
+以外なら Pillow がそのまま読み込み、グレースケール化して同じ処理に流します。
+
 ### 建物の平面図（黒い壁・白い床）から
 
 `--invert` は白黒を反転、`--threshold` は壁をくっきり垂直に立てるための設定です。

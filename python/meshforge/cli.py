@@ -122,7 +122,7 @@ def _add_convert_args(c: argparse.ArgumentParser) -> None:
         type=float,
         default=argparse.SUPPRESS,
         metavar="D",
-        help="rasterize PDF input at this DPI (ignored for PNG); default 150",
+        help="rasterize PDF input at this DPI (ignored for raster PNG/JPEG); default 150",
     )
     c.add_argument(
         "--pixel-mm",
@@ -172,7 +172,7 @@ def _add_convert_args(c: argparse.ArgumentParser) -> None:
 
 
 def _add_extract_walls_args(c: argparse.ArgumentParser) -> None:
-    c.add_argument("input", help="input PNG / PDF floor plan")
+    c.add_argument("input", help="input PNG / JPEG / PDF floor plan")
     c.add_argument(
         "-o", "--output",
         default=None,
@@ -181,7 +181,7 @@ def _add_extract_walls_args(c: argparse.ArgumentParser) -> None:
     )
     c.add_argument(
         "--dpi", type=float, default=150.0, metavar="D",
-        help="rasterize PDF input at this DPI (ignored for PNG); default 150",
+        help="rasterize PDF input at this DPI (ignored for raster PNG/JPEG); default 150",
     )
     c.add_argument(
         "--pixel-mm", dest="pixel_mm", type=float, default=1.0, metavar="V",
@@ -264,15 +264,15 @@ def _add_extract_walls_args(c: argparse.ArgumentParser) -> None:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="meshforge",
-        description="PNG/PDF -> binary STL heightmap.",
+        description="PNG/JPEG/PDF -> binary STL heightmap.",
     )
     sub = p.add_subparsers(dest="cmd", required=True, metavar="COMMAND")
-    convert = sub.add_parser("convert", help="convert a PNG/PDF heightmap to binary STL")
+    convert = sub.add_parser("convert", help="convert a PNG/JPEG/PDF heightmap to binary STL")
     _add_convert_args(convert)
     convert.set_defaults(handler=cmd_convert)
     extract = sub.add_parser(
         "extract-walls",
-        help="extract walls[] from a PNG/PDF floor plan (Step 12-11; OpenCV)",
+        help="extract walls[] from a PNG/JPEG/PDF floor plan (Step 12-11; OpenCV)",
     )
     _add_extract_walls_args(extract)
     extract.set_defaults(handler=cmd_extract_walls)
