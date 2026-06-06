@@ -149,14 +149,25 @@ def _downscale_to_fit(image: Image.Image, max_pixels: int) -> tuple[Image.Image,
     if pixels <= max_pixels:
         return image, 1.0
     scale = (max_pixels / pixels) ** 0.5
-    new_size = (max(1, int(image.width * scale)), max(1, int(image.height * scale)))
+    new_w = max(1, int(image.width * scale))
+    new_h = max(1, int(image.height * scale))
+    # Clamping a near-zero axis up to 1 (the max(1, ...) above) can push
+    # width*height back over the cap on extreme strips — a 1×1e8 px input would
+    # otherwise stay ~14 Mpx and defeat the OOM guard. Shrink the longer axis to
+    # fit the remaining budget (one axis is already 1 here, so this is exact).
+    if new_w * new_h > max_pixels:
+        if new_w >= new_h:
+            new_w = max(1, max_pixels // new_h)
+        else:
+            new_h = max(1, max_pixels // new_w)
+    new_size = (new_w, new_h)
     resized = image.resize(new_size, Image.LANCZOS)
     # Recompute the scale from the rounded *area* (geometric mean of the two
     # per-axis scales), not width alone: heightmap_to_mesh uses one pixel_mm
     # for both axes, so an area-preserving factor keeps the physical size right
     # even for extreme aspect ratios where int() rounds the axes by different
     # fractions (e.g. a 10×1e6 px strip rounds width far harder than height).
-    return resized, (new_size[0] * new_size[1] / pixels) ** 0.5
+    return resized, (new_w * new_h / pixels) ** 0.5
 
 
 def _render_dam_tab() -> None:
