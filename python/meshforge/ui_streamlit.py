@@ -37,10 +37,14 @@ from pathlib import Path
 import pandas as pd
 from PIL import Image, ImageDraw
 
-# 8 megapixel cap. A4 @ 300 DPI is ~8.7 Mpx, so anything beyond this is
-# almost certainly too large for the 1 GB RAM limit on Streamlit Cloud
-# (heightmap_to_mesh allocates ~30x the image bytes for verts + faces).
-_MAX_PIXELS = 8_000_000
+# Downscale target for the dam tab. The mesh is one cell per pixel, so the STL
+# size is set purely by pixel count: ~2 Mpx -> ~8M triangles -> ~400 MB STL,
+# while ~8 Mpx already hits ~1.6 GB and OOMs the 1 GB Streamlit Cloud instance
+# (the mesh arrays and the serialized STL bytes coexist during write). A photo
+# turned into a relief needs far less than 8 Mpx anyway, so oversized raster
+# input (e.g. a 12 Mpx iPhone JPEG) is downscaled to this via _downscale_to_fit
+# rather than rejected.
+_MAX_PIXELS = 2_000_000
 
 # Cap DPI at 600. PyMuPDF will happily rasterize at multi-thousand DPI and
 # instantly OOM, so we clamp before the request reaches load_grayscale.
@@ -130,6 +134,46 @@ def _render_stl_result(stl_bytes: bytes, download_name: str, preview_key: str) -
         mime="model/stl",
         key=f"{preview_key}-download",
     )
+
+
+def _downscale_to_fit(image: Image.Image, max_pixels: int) -> tuple[Image.Image, float]:
+    """Shrink `image` isotropically so width*height <= max_pixels.
+
+    Returns (image, scale) where scale is the linear shrink factor (<= 1.0);
+    callers divide pixel_mm by it to keep the physical mesh size unchanged. The
+    resize is isotropic, so the aspect ratio is preserved and that single scale
+    restores both side lengths (to within sub-pixel rounding).
+
+    iPhone photos are ~12 Mpx — over the cap — so without this the dam tab
+    dead-ends on a "too large" error with no in-app way to recover.
+
+    Raises ValueError when the input is too elongated to fit the cap without
+    breaking the aspect ratio — i.e. its ratio exceeds ~max_pixels:1, so the
+    short side would round below 1px. Distorting such a strip anisotropically
+    would silently throw off the printed dimensions, so we reject it instead.
+    No real photo or floor plan reaches a >2,000,000:1 ratio.
+    """
+    pixels = image.width * image.height
+    if pixels <= max_pixels:
+        return image, 1.0
+    scale = (max_pixels / pixels) ** 0.5
+    new_w = max(1, int(image.width * scale))
+    new_h = max(1, int(image.height * scale))
+    # int() only truncates down, so new_w*new_h exceeds the cap only when the
+    # max(1, ...) above raised a side that rounded to 0 — meaning an isotropic
+    # shrink can't fit the cap at all. Reject rather than distort.
+    if new_w * new_h > max_pixels:
+        raise ValueError(
+            "アスペクト比が極端すぎて "
+            f"{max_pixels / 1_000_000:.0f} Mpx 以内に縮小できません "
+            f"({image.width}×{image.height})。"
+        )
+    resized = image.resize((new_w, new_h), Image.LANCZOS)
+    # Derive the returned scale from the rounded *area* (geometric mean of the
+    # two per-axis scales). With an isotropic shrink the two axis scales match,
+    # so this equals either one; using the area keeps it exact under sub-pixel
+    # rounding without favoring width over height.
+    return resized, (new_w * new_h / pixels) ** 0.5
 
 
 def _render_dam_tab() -> None:
@@ -271,22 +315,33 @@ def _render_dam_tab() -> None:
                     f"({type(e).__name__}: {e})。サポート形式は PNG / JPEG / PDF です。"
                 )
             else:
-                pixels = image.width * image.height
-                if pixels > _MAX_PIXELS:
-                    st.error(
-                        f"入力サイズが大きすぎます "
-                        f"({image.width}×{image.height} = {pixels / 1_000_000:.1f} Mpx)。"
-                        f"上限は {_MAX_PIXELS / 1_000_000:.0f} Mpx です。"
-                        " DPI を下げるか、より小さい画像を使ってください。"
-                    )
+                # iPhone JPEGs (~12 Mpx) blow past _MAX_PIXELS. Rather than
+                # dead-end, downscale to fit and bump pixel_mm by 1/scale so the
+                # printed model keeps the same physical size — only surface
+                # detail drops, which is unavoidable under the RAM cap anyway.
+                orig_w, orig_h = image.width, image.height
+                try:
+                    image, scale = _downscale_to_fit(image, _MAX_PIXELS)
+                except ValueError as e:
+                    # Degenerate strip that can't fit the cap without distorting.
+                    st.error(str(e))
                 else:
+                    effective_pixel_mm = pixel_mm / scale
+                    if scale < 1.0:
+                        st.info(
+                            "メモリ節約のため入力を自動で縮小しました "
+                            f"({orig_w}×{orig_h} = {orig_w * orig_h / 1_000_000:.1f} Mpx → "
+                            f"{image.width}×{image.height} ≈ {_MAX_PIXELS / 1_000_000:.0f} Mpx)。"
+                            " 物理サイズを保つため pixel_mm を "
+                            f"{pixel_mm:.3f} → {effective_pixel_mm:.3f} に自動調整しています。"
+                        )
                     heights = to_heights(
                         image,
                         invert=invert,
                         threshold=threshold if use_threshold else None,
                         max_height_mm=max_height_mm,
                     )
-                    mesh = heightmap_to_mesh(heights, pixel_mm=pixel_mm, base_mm=base_mm)
+                    mesh = heightmap_to_mesh(heights, pixel_mm=effective_pixel_mm, base_mm=base_mm)
                     stl_bytes = serialize(mesh)
     finally:
         Path(tmp_path).unlink(missing_ok=True)
@@ -476,7 +531,7 @@ def _render_extract_overlay(
     extract form は `--dpi` を 600 まで許可しており、A4 PDF を 600 DPI で
     入れると ~35 Mpx (RGB で 100 MB+) になる。`st.image` は PNG エンコードし
     てブラウザに送るので、Streamlit Cloud の 1 GB RAM 上限でフリーズ / OOM
-    する。dam タブには 8 Mpx ガードがあるが extract 側にはない (Codex R2 P2)。
+    する。dam タブには自動縮小ガードがあるが extract 側にはない (Codex R2 P2)。
     overlay は全体把握が目的で精細さは要らないので、長辺 `_OVERLAY_MAX_SIDE_PX`
     px までに thumbnail してから線を描く。線座標も同じ scale で縮める。
     """
