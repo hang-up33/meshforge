@@ -140,7 +140,8 @@ def _downscale_to_fit(image: Image.Image, max_pixels: int) -> tuple[Image.Image,
     """Shrink `image` so width*height <= max_pixels, preserving aspect ratio.
 
     Returns (image, scale) where scale is the linear shrink factor (<= 1.0);
-    callers divide pixel_mm by it to keep the physical mesh size unchanged.
+    callers divide pixel_mm by it to keep the physical mesh area unchanged
+    (and both side lengths too, when the aspect ratio survives rounding).
     iPhone photos are ~12 Mpx — over the cap — so without this the dam tab
     dead-ends on a "too large" error with no in-app way to recover.
     """
@@ -150,9 +151,12 @@ def _downscale_to_fit(image: Image.Image, max_pixels: int) -> tuple[Image.Image,
     scale = (max_pixels / pixels) ** 0.5
     new_size = (max(1, int(image.width * scale)), max(1, int(image.height * scale)))
     resized = image.resize(new_size, Image.LANCZOS)
-    # Recompute the scale from the rounded width so the pixel_mm compensation
-    # matches the mesh that actually gets built (int() drops a sub-pixel here).
-    return resized, new_size[0] / image.width
+    # Recompute the scale from the rounded *area* (geometric mean of the two
+    # per-axis scales), not width alone: heightmap_to_mesh uses one pixel_mm
+    # for both axes, so an area-preserving factor keeps the physical size right
+    # even for extreme aspect ratios where int() rounds the axes by different
+    # fractions (e.g. a 10×1e6 px strip rounds width far harder than height).
+    return resized, (new_size[0] * new_size[1] / pixels) ** 0.5
 
 
 def _render_dam_tab() -> None:
