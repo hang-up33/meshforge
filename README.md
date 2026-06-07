@@ -47,8 +47,6 @@ meshforge（メッシュフォージ）は、建物の平面図のような「�
 > Building タブで「画像から壁を読み取る（Extract from image）」を選んだ画面です。
 > Heightmap (dam) タブを開けば、画像 / PDF → そのまま STL の流れも使えます。
 
-![壁と部屋の検出結果](docs/screenshots/overlay-preview.png)
-
 > 「Extract & Build」を押すと、読み取った壁の中心線が赤、自動で見つけた部屋の
 > 輪郭が青で、元の画像に重ねて表示されます。
 
