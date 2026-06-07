@@ -327,12 +327,12 @@ rooms / openings / roof / furniture は出さないので、抽出 → 手動で
 ### Streamlit UI 経由 (Step 12-13 で実装)
 
 `.venv/bin/streamlit run python/meshforge/ui_streamlit.py` を起動して
-Building タブ → `Source = Extract from image` を選ぶと、UI 上で
+「間取り図から建物 (Building)」タブ →「入力ソース = 画像から抽出」を選ぶと、UI 上で
 
-1. PNG / PDF アップロード
+1. PNG / JPEG / PDF アップロード
 2. パラメータ調整 (pixel_mm / threshold / wall_thickness_mm / merge 系等、
    CLI と同じ意味の項目を form で露出)
-3. `Extract & Build` → `extract_walls` + `build_mesh` を一気に走らせる
+3. 「抽出して生成」→ `extract_walls` + `build_mesh` を一気に走らせる
 4. 中間 JSON 単体のダウンロード + STL の 3D プレビュー / ダウンロード
 
 ができる。同じ入力・同じパラメータで CLI と **バイト一致** する STL を返す
