@@ -118,7 +118,6 @@ UI を変更した PR では、PR 本文のスクショに加えてここの画�
 6. `git diff docs/screenshots/editor.png` で差分が出ていることを確認 →
    UI 変更の PR に同梱してコミットする。
 
-## `overlay-preview.png` の再生成（Step 12-14 以降）
 
 Streamlit の file_uploader は React 由来の事情で headless CDP からは
 プログラム的にファイルを流し込めない (`DOM.setFileInputFiles` でファイル
