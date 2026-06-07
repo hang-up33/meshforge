@@ -72,29 +72,29 @@ from meshforge.stl import serialize, summary
 
 st.set_page_config(page_title="meshforge", layout="centered")
 st.title("meshforge")
-st.caption("PNG / JPEG / PDF heightmap → 3D printable binary STL")
+st.caption("PNG / JPEG / PDF の高さマップ → 3Dプリント用バイナリ STL")
 
 # Presets nudge the four most input-dependent parameters (invert, threshold
 # usage + value, max_height_mm, base_mm). pixel_mm / dpi vary much less by
 # input type so they stay on the form's current value.
-_CUSTOM = "Custom (manual)"
+_CUSTOM = "カスタム (手動)"
 PRESETS: dict[str, dict[str, object]] = {
     _CUSTOM: {},
-    "Floor plan (dark walls on light background)": {
+    "間取り図（明るい背景に暗い壁）": {
         "invert": True,
         "use_threshold": True,
         "threshold": 128,
         "max_height_mm": 10.0,
         "base_mm": 1.0,
     },
-    "Logo / Text (light on dark)": {
+    "ロゴ / 文字（暗い背景に明るい図）": {
         "invert": False,
         "use_threshold": True,
         "threshold": 128,
         "max_height_mm": 5.0,
         "base_mm": 2.0,
     },
-    "Terrain / Depth map (grayscale gradient)": {
+    "地形 / 深度マップ（グレースケール階調）": {
         "invert": False,
         "use_threshold": False,
         "threshold": 128,
@@ -117,7 +117,7 @@ for k, v in {
 
 def _render_stl_result(stl_bytes: bytes, download_name: str, preview_key: str) -> None:
     """3D プレビュー + ダウンロードボタンの共通描画。dam / building の両タブで使う。"""
-    st.subheader("3D preview")
+    st.subheader("3Dプレビュー")
     stl_from_text(
         text=stl_bytes,
         color="#bfbfbf",
@@ -128,7 +128,7 @@ def _render_stl_result(stl_bytes: bytes, download_name: str, preview_key: str) -
         key=preview_key,
     )
     st.download_button(
-        "Download STL",
+        "STL をダウンロード",
         data=stl_bytes,
         file_name=download_name,
         mime="model/stl",
@@ -177,10 +177,14 @@ def _downscale_to_fit(image: Image.Image, max_pixels: int) -> tuple[Image.Image,
 
 
 def _render_dam_tab() -> None:
+    st.caption(
+        "白黒画像（PNG / JPEG / PDF）の明るさを高さに変換して立体にします。"
+        "ロゴ・地形・平面図の凹凸モデル向け。"
+    )
     uploaded = st.file_uploader(
-        "Input file (PNG, JPEG or PDF)",
+        "入力ファイル（PNG / JPEG / PDF）",
         type=["png", "jpg", "jpeg", "pdf"],
-        help="PDF input rasterizes the first page via PyMuPDF (install with `pip install -e '.[pdf]'`).",
+        help="PDF は PyMuPDF で1ページ目をラスタライズします（`pip install -e '.[pdf]'` で導入）。",
         key="dam-uploader",
     )
 
@@ -195,10 +199,10 @@ def _render_dam_tab() -> None:
         )
 
     preset = st.selectbox(
-        "Preset",
+        "プリセット",
         list(PRESETS.keys()),
         key="preset",
-        help="Pick a preset to fill the parameters below, then fine-tune as needed. 'Custom (manual)' keeps your current values.",
+        help="プリセットを選ぶと下のパラメータが埋まります。選んだ後の微調整も可能。「カスタム (手動)」は今の値を保持します。",
     )
 
     # When the user switches preset, overwrite session_state for the affected
@@ -214,52 +218,52 @@ def _render_dam_tab() -> None:
         st.session_state["_applied_preset"] = preset
 
     with st.form("convert"):
-        st.subheader("Parameters")
+        st.subheader("パラメータ")
         col_left, col_right = st.columns(2)
         with col_left:
             invert = st.checkbox(
-                "Invert brightness (dark pixels become tall)",
+                "明暗を反転（暗いピクセルが高くなる）",
                 key="invert",
-                help="Use for floor plans where walls are drawn dark on a light background.",
+                help="明るい背景に暗く描かれた壁の間取り図などで使います。",
             )
             use_threshold = st.checkbox(
-                "Binarize with threshold",
+                "しきい値で二値化",
                 key="use_threshold",
-                help="Snap each pixel to either max height or flat. Kills grayscale anti-aliasing for clean vertical walls.",
+                help="各ピクセルを最大高さか平坦のどちらかに振り分けます。グレースケールのアンチエイリアスを消して、垂直な壁にできます。",
             )
             threshold = st.slider(
-                "Threshold (0..255)",
+                "しきい値 (0〜255)",
                 min_value=0,
                 max_value=255,
                 key="threshold",
                 disabled=not use_threshold,
             )
             dpi = st.number_input(
-                "PDF DPI (PDF input only)",
+                "PDF DPI（PDF入力時のみ）",
                 min_value=1.0,
                 max_value=_MAX_DPI,
                 value=DEFAULTS["dpi"],
                 step=10.0,
                 format="%.1f",
-                help=f"Higher DPI = more detail but more memory. Capped at {_MAX_DPI:.0f} DPI to avoid OOM on Streamlit Cloud.",
+                help=f"DPI が高いほど精細ですがメモリを多く使います。Streamlit Cloud のOOM回避のため {_MAX_DPI:.0f} DPI が上限です。",
             )
         with col_right:
             pixel_mm = st.number_input(
-                "Pixel size (mm/px)",
+                "ピクセルサイズ (mm/px)",
                 min_value=0.001,
                 value=DEFAULTS["pixel_mm"],
                 step=0.1,
                 format="%.3f",
             )
             max_height_mm = st.number_input(
-                "Max height (mm @ brightness 255)",
+                "最大高さ（mm・明度255のとき）",
                 min_value=0.01,
                 key="max_height_mm",
                 step=0.5,
                 format="%.2f",
             )
             base_mm = st.number_input(
-                "Base thickness (mm)",
+                "土台の厚み (mm)",
                 min_value=0.01,
                 key="base_mm",
                 step=0.1,
@@ -267,7 +271,7 @@ def _render_dam_tab() -> None:
             )
 
         submitted = st.form_submit_button(
-            "Convert",
+            "変換",
             type="primary",
             disabled=uploaded is None or (_pdf_uploaded and not _pymupdf_available),
         )
@@ -290,7 +294,7 @@ def _render_dam_tab() -> None:
     mesh = None
 
     try:
-        with st.spinner("Converting..."):
+        with st.spinner("変換中..."):
             try:
                 image = load_grayscale(tmp_path, dpi)
             except ImportError:
@@ -355,16 +359,20 @@ def _render_dam_tab() -> None:
 
 
 def _render_building_tab() -> None:
+    st.caption(
+        "壁・部屋・開口部を持つ「編集できる建物モデル」から立体にします。"
+        "間取り図の画像から壁を自動抽出することも可能。"
+    )
     source = st.radio(
-        "Source",
-        ["Upload JSON", "Extract from image"],
+        "入力ソース",
+        ["JSON をアップロード", "画像から抽出"],
         horizontal=True,
         key="building-source",
-        help="Upload JSON は手書き / 既存の building 中間 JSON を直接読む。"
-             "Extract from image は PNG/JPEG/PDF 平面図から walls[] を自動生成する。",
+        help="「JSON をアップロード」は手書き / 既存の building 中間 JSON を直接読む。"
+             "「画像から抽出」は PNG/JPEG/PDF 平面図から walls[] を自動生成する。",
     )
 
-    if source == "Upload JSON":
+    if source == "JSON をアップロード":
         result = _building_spec_from_json_upload()
     else:
         result = _building_spec_from_image_extract()
@@ -374,15 +382,15 @@ def _render_building_tab() -> None:
 
     mesh = None
     try:
-        with st.spinner("Building mesh..."):
+        with st.spinner("メッシュを生成中..."):
             mesh = build_mesh(spec)
     except ValueError as e:
         # _validate_* / shapely is_valid 由来。CLI と同じメッセージを返す。
-        st.error(f"building mode: {e}")
+        st.error(f"建物モード: {e}")
         return
     except ImportError as e:
         # shapely + mapbox_earcut (rooms / flat roof) や manifold3d (openings) 未導入。
-        st.error(f"building mode: {e}")
+        st.error(f"建物モード: {e}")
         return
 
     download_name = Path(source_basename).with_suffix(".stl").name
@@ -451,11 +459,11 @@ def _building_spec_from_json_upload() -> tuple[dict, str] | None:
         " STL を生成します。スキーマは "
         "[`docs/building-schema.md`](https://github.com/hang-up33/meshforge/blob/main/docs/building-schema.md)"
         " 参照。`samples/building_*.json` をそのままドロップすれば動きます。"
-        " アップロード後は walls[] を下の表で編集してから Build できます"
+        " アップロード後は walls[] を下の表で編集してから「生成」できます"
         " (rooms / openings / roof / furniture はそのまま保持)。"
     )
     uploaded = st.file_uploader(
-        "Building intermediate JSON",
+        "建物の中間 JSON",
         type=["json"],
         key="building-uploader",
         help="walls / rooms / openings / roof / furniture を含む中間 JSON。",
@@ -487,7 +495,7 @@ def _building_spec_from_json_upload() -> tuple[dict, str] | None:
         return None
 
     st.markdown(
-        "**Walls** — 値の編集 / 行の追加・削除ができます。編集して **Build** を"
+        "**壁 (walls)** — 値の編集 / 行の追加・削除ができます。編集して「生成」を"
         " 押すと反映された STL が出ます。"
     )
     with st.form("building-json-edit"):
@@ -506,7 +514,7 @@ def _building_spec_from_json_upload() -> tuple[dict, str] | None:
                 "height_mm": st.column_config.NumberColumn("height_mm", min_value=0.0),
             },
         )
-        submitted = st.form_submit_button("Build", type="primary")
+        submitted = st.form_submit_button("生成", type="primary")
     if not submitted:
         return None
 
@@ -578,90 +586,90 @@ def _building_spec_from_image_extract() -> tuple[dict, str] | None:
         " ダウンロードして手で追記してください。"
     )
     uploaded = st.file_uploader(
-        "Floor plan image (PNG, JPEG or PDF)",
+        "間取り図の画像（PNG / JPEG / PDF）",
         type=["png", "jpg", "jpeg", "pdf"],
         key="building-extract-uploader",
         help="PDF 入力時は `pip install -e '.[vision,pdf]'` が必要。",
     )
 
     with st.form("building-extract-form"):
-        st.subheader("Extract parameters")
+        st.subheader("抽出パラメータ")
         col_left, col_right = st.columns(2)
         with col_left:
             pixel_mm = st.number_input(
-                "pixel_mm (mm per source pixel)",
+                "pixel_mm（元画像1ピクセルあたりのmm）",
                 min_value=0.001, value=0.5, step=0.1, format="%.3f",
                 key="extract-pixel-mm",
             )
             invert = st.checkbox(
-                "Invert brightness (default: dark walls on light bg)",
+                "明暗を反転（既定: 明るい背景に暗い壁）",
                 value=True,
                 key="extract-invert",
             )
             threshold = st.slider(
-                "Binary threshold (0..255)",
+                "二値化しきい値 (0〜255)",
                 min_value=0, max_value=255, value=128,
                 key="extract-threshold",
             )
             min_length_mm = st.number_input(
-                "Min wall length (mm)",
+                "壁の最小長さ (mm)",
                 min_value=0.001, value=30.0, step=5.0, format="%.2f",
                 key="extract-min-length",
             )
             dpi = st.number_input(
-                "PDF DPI (PDF input only)",
+                "PDF DPI（PDF入力時のみ）",
                 min_value=1.0, max_value=600.0, value=150.0, step=10.0, format="%.1f",
                 key="extract-dpi",
             )
         with col_right:
             wall_thickness_mm = st.number_input(
-                "Wall thickness (mm)",
+                "壁の厚み (mm)",
                 min_value=0.001, value=4.0, step=1.0, format="%.2f",
                 key="extract-wall-thickness",
             )
             wall_height_mm = st.number_input(
-                "Wall height (mm)",
+                "壁の高さ (mm)",
                 min_value=0.001, value=24.0, step=2.0, format="%.2f",
                 key="extract-wall-height",
             )
             merge = st.checkbox(
-                "Merge near-collinear segments (Step 12-12 / 12-16)",
+                "ほぼ一直線の線分を統合 (Step 12-12 / 12-16)",
                 value=True,
                 key="extract-merge",
             )
             merge_distance_mm = st.number_input(
-                "Merge: perpendicular distance (mm)",
+                "統合: 垂直方向の距離 (mm)",
                 min_value=0.001, value=2.0, step=0.5, format="%.2f",
                 key="extract-merge-distance",
                 disabled=not merge,
             )
             merge_angle_deg = st.number_input(
-                "Merge: angle tolerance (deg)",
+                "統合: 角度の許容差 (度)",
                 min_value=0.001, value=5.0, step=1.0, format="%.2f",
                 key="extract-merge-angle",
                 disabled=not merge,
             )
             merge_gap_mm = st.number_input(
-                "Merge: axial gap tolerance (mm)",
+                "統合: 軸方向のギャップ許容差 (mm)",
                 min_value=0.0, value=2.0, step=0.5, format="%.2f",
                 key="extract-merge-gap",
                 disabled=not merge,
             )
             with_rooms = st.checkbox(
-                "Auto-extract rooms (Step 12-15)",
+                "部屋を自動抽出 (Step 12-15)",
                 value=False,
                 key="extract-with-rooms",
                 help="walls の閉路を shapely.polygonize で検出して rooms[] に "
                      "追加する。建てたあと床スラブが出る。",
             )
             room_floor_thickness_mm = st.number_input(
-                "Room floor thickness (mm)",
+                "床スラブの厚み (mm)",
                 min_value=0.001, value=2.0, step=0.5, format="%.2f",
                 key="extract-room-floor",
                 disabled=not with_rooms,
             )
             room_snap_tol_px = st.number_input(
-                "Room snap tolerance (px)",
+                "部屋スナップの許容差 (px)",
                 min_value=0.0, value=3.0, step=0.5, format="%.2f",
                 key="extract-room-snap",
                 disabled=not with_rooms,
@@ -669,7 +677,7 @@ def _building_spec_from_image_extract() -> tuple[dict, str] | None:
                      "3.0 が要る。Hough の端点不一致を吸収する。",
             )
         submitted = st.form_submit_button(
-            "Extract & Build",
+            "抽出して生成",
             type="primary",
             disabled=uploaded is None,
         )
@@ -687,7 +695,7 @@ def _building_spec_from_image_extract() -> tuple[dict, str] | None:
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp.write(uploaded.getvalue())
             tmp_path = tmp.name
-        with st.spinner("Extracting walls..."):
+        with st.spinner("壁を抽出中..."):
             try:
                 spec = extract_walls(
                     tmp_path,
@@ -708,11 +716,11 @@ def _building_spec_from_image_extract() -> tuple[dict, str] | None:
                 )
             except ValueError as e:
                 # _validate_* / no segments detected / 検証エラー。
-                st.error(f"extract-walls error: {e}")
+                st.error(f"壁抽出エラー: {e}")
                 return None
             except ImportError as e:
                 # opencv-python-headless 未導入時の lazy import 失敗。
-                st.error(f"extract-walls error: {e}")
+                st.error(f"壁抽出エラー: {e}")
                 return None
             except FileNotFoundError as e:
                 st.error(f"入力ファイルが見つかりません: {e}")
@@ -735,19 +743,19 @@ def _building_spec_from_image_extract() -> tuple[dict, str] | None:
 
     n_walls = len(spec.get("walls", []))
     n_rooms = len(spec.get("rooms", [])) if with_rooms else 0
-    summary_msg = f"extracted walls={n_walls}"
+    summary_msg = f"壁 {n_walls} 本を抽出"
     if with_rooms:
-        summary_msg += f", rooms={n_rooms}"
+        summary_msg += f"、部屋 {n_rooms} 室"
     st.success(summary_msg)
     if overlay_image is not None:
-        caption = f"Detected walls ({n_walls} segments)"
+        caption = f"検出した壁 ({n_walls} 本)"
         if with_rooms:
-            caption += f" + rooms ({n_rooms})"
-        caption += " overlaid on input image"
+            caption += f" ＋ 部屋 ({n_rooms} 室)"
+        caption += " を入力画像に重ねて表示"
         st.image(overlay_image, caption=caption, use_container_width=True)
     json_basename = Path(uploaded.name).with_suffix(".json").name
     st.download_button(
-        "Download walls JSON",
+        "壁 JSON をダウンロード",
         data=json.dumps(spec, indent=2) + "\n",
         file_name=json_basename,
         mime="application/json",
@@ -756,7 +764,7 @@ def _building_spec_from_image_extract() -> tuple[dict, str] | None:
     return spec, uploaded.name
 
 
-tab_dam, tab_building = st.tabs(["Heightmap (dam)", "Building"])
+tab_dam, tab_building = st.tabs(["画像から立体化 (Heightmap)", "間取り図から建物 (Building)"])
 with tab_dam:
     _render_dam_tab()
 with tab_building:

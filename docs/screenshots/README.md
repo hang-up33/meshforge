@@ -4,9 +4,11 @@ README.md に貼る UI スクショの置き場。
 
 ## ファイル
 
-- `editor.png` — Streamlit UI の主要機能画面。Step 12-13 以降は Building タブ
-  の "Extract from image" セクション (未アップロード状態) を写している。
-  dam タブのフローは README 本文で別途案内する。
+- `heightmap-tab.png` — 「画像から立体化 (Heightmap)」タブの初期画面
+  (未アップロード状態)。白黒画像 → STL の最もシンプルなフロー。
+- `editor.png` — 「間取り図から建物 (Building)」タブの主要機能画面。
+  Step 12-13 以降は「画像から抽出」セクション (未アップロード状態) を
+  写している。
 - `overlay-preview.png` — Step 12-14 で追加した extract overlay の見た目を
   オフラインで再現したもの。`_render_extract_overlay` と同じ
   `load_grayscale` + `ImageDraw.line` のロジックで生成。
@@ -64,21 +66,50 @@ UI を変更した PR では、PR 本文のスクショに加えてここの画�
                    data = json.loads(await ws.recv())
                    if data.get("id") == mid:
                        return data
+           async def evaluate(expr):
+               r = await send("Runtime.evaluate", {"expression": expr, "returnByValue": True})
+               return r.get("result", {}).get("result", {}).get("value")
+
+           async def wait_for(expr, tries=60):
+               for _ in range(tries):
+                   if await evaluate(expr) is True:
+                       return True
+                   await asyncio.sleep(0.5)
+               return False
+
            await send("Page.enable")
+           await send("Runtime.enable")
            await send("Emulation.setDeviceMetricsOverride", {
                "width": 1280, "height": 2000, "deviceScaleFactor": 2, "mobile": False,
            })
-           for _ in range(60):
-               r = await send("Runtime.evaluate", {
-                   "expression": (
-                       "document.querySelector('[data-testid=\"stFileUploader\"]') !== null "
-                       "&& document.querySelector('[data-testid=\"stForm\"]') !== null"
-                   ),
-                   "returnByValue": True,
-               })
-               if r.get("result", {}).get("result", {}).get("value") is True:
-                   break
-               await asyncio.sleep(0.5)
+
+           # --- 画像から立体化 (Heightmap) タブ = 1番目、初期アクティブ ---
+           await wait_for(
+               "document.querySelector('[data-testid=\"stFileUploader\"]') !== null "
+               "&& document.querySelector('[data-testid=\"stForm\"]') !== null"
+           )
+           await asyncio.sleep(1.5)
+           shot = await send("Page.captureScreenshot", {"format": "png"})
+           open("docs/screenshots/heightmap-tab.png", "wb").write(
+               base64.b64decode(shot["result"]["data"])
+           )
+
+           # --- 間取り図から建物 (Building) タブ = 2番目をクリック → 画像から抽出 ---
+           await evaluate(
+               "(()=>{const t=document.querySelectorAll('button[role=\"tab\"]');"
+               "if(t.length>1){t[1].click();return true;}return false;})()"
+           )
+           await asyncio.sleep(1.5)
+           await evaluate(
+               "(()=>{const ls=[...document.querySelectorAll('label')];"
+               "const l=ls.find(x=>x.textContent.includes('画像から抽出'));"
+               "if(l){l.click();return true;}return false;})()"
+           )
+           await asyncio.sleep(2.0)
+           await wait_for(
+               "document.querySelector('[data-testid=\"stForm\"]') !== null "
+               "&& document.querySelector('[data-testid=\"stFileUploader\"]') !== null"
+           )
            await asyncio.sleep(1.5)
            shot = await send("Page.captureScreenshot", {"format": "png"})
            open("docs/screenshots/editor.png", "wb").write(
@@ -92,21 +123,30 @@ UI を変更した PR では、PR 本文のスクショに加えてここの画�
    .venv/bin/python /tmp/shot.py
    ```
 
-4. 余白をクロップ（フォーム下の黒い空白を切る）
+   1 回の実行で `heightmap-tab.png`（1番目のタブ）と `editor.png`
+   （2番目のタブ +「画像から抽出」）の両方を撮る。Streamlit のタブ / radio
+   は実 DOM のクリックで切り替わるので、`button[role="tab"]` と「画像から抽出」
+   ラベルを JS で click している。
+
+4. 余白をクロップ（フォーム下の黒い空白を切る）。コンテンツ下端を自動検出
+   するので Step が進んでフォーム高さが変わっても手で px を調整しなくてよい。
 
    ```sh
    .venv/bin/python - <<'PY'
    from PIL import Image
-   p = "docs/screenshots/editor.png"
-   img = Image.open(p)
-   img.crop((0, 0, img.width, 2700)).save(p, optimize=True)
+   import numpy as np
+
+   def crop_to_content(path, pad=60):
+       img = Image.open(path).convert("RGB")
+       arr = np.asarray(img)
+       rows = np.where((arr.max(axis=2) > 40).any(axis=1))[0]
+       bottom = min(arr.shape[0], int(rows.max()) + pad)
+       img.crop((0, 0, img.width, bottom)).save(path, optimize=True)
+
+   crop_to_content("docs/screenshots/heightmap-tab.png")
+   crop_to_content("docs/screenshots/editor.png")
    PY
    ```
-
-   crop の高さは Extract form の高さで変わる。Step 12-16 時点で 2700 px
-   (deviceScaleFactor=2 環境)。merge ラベルが 2 行に折り返した分 12-15 の
-   2600 px から一段下げた。フィールド追加 / 文言が伸びた Step では実際の
-   コンテンツ下端を見て再調整する。
 
 5. 後片付け
 
