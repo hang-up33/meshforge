@@ -288,6 +288,12 @@ def _render_dam_tab() -> None:
     if not (submitted and uploaded is not None):
         return
 
+    # A positive budget below the 12-face minimum of a 1x1 mesh can't be honored
+    # (downsample_heights raises on it), so bail early with a friendly message.
+    if 0 < int(max_triangles) < 12:
+        st.error("最大三角形数は 0（無制限）または 12 以上を指定してください。")
+        return
+
     # load_grayscale dispatches on the path suffix to decide PNG vs PDF, so we
     # round-trip through a tempfile that preserves the original extension
     # instead of refactoring the core API.

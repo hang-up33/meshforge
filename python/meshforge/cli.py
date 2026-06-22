@@ -164,8 +164,9 @@ def _add_convert_args(c: argparse.ArgumentParser) -> None:
         default=argparse.SUPPRESS,
         metavar="N",
         help="cap the mesh at ~N triangles by downsampling the heightmap "
-             "(physical size preserved); default 1000000, 0 disables. Raise "
-             "this if your slicer rejects the STL for having too many triangles.",
+             "(physical size preserved); default 1000000, 0 disables. Lower "
+             "this if your slicer rejects the STL for having too many triangles "
+             "(N is an upper bound, so a smaller value yields fewer triangles).",
     )
     c.add_argument(
         "--mode",
@@ -387,8 +388,14 @@ def validate(s: dict) -> str | None:
     t = s["threshold"]
     if t is not None and not 0 <= t <= 255:
         return "threshold must be in 0..255"
-    if s["max_triangles"] < 0:
+    mt = s["max_triangles"]
+    if mt < 0:
         return "max_triangles must be >= 0 (0 disables the cap)"
+    # The smallest possible mesh (a 1x1 cell) is 12 triangles, so any positive
+    # budget below that is unreachable — reject it rather than emit an
+    # over-budget STL that breaks the cap's contract.
+    if 0 < mt < 12:
+        return "max_triangles must be 0 (unlimited) or >= 12 (the smallest possible mesh)"
     # NaN / inf すり抜け防止: `nan > 0` も `nan <= 0` も False になるので
     # 単純な ">0" だけだと validate を素通りして NaN 座標のメッシュが
     # できる。json.load や float() は NaN/Infinity を受理するため

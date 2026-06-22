@@ -80,10 +80,17 @@ def downsample_heights(
     only fine surface detail is lost. Returns (heights, pixel_mm_x, pixel_mm_y);
     the two sizes match for square-ish grids and differ only when the trim below
     is anisotropic. max_triangles <= 0 (or an already-small grid) returns the
-    input unchanged with pixel_mm on both axes.
+    input unchanged with pixel_mm on both axes. A positive budget below the
+    12-face minimum of a 1x1 mesh is impossible to honor, so it raises
+    ValueError rather than silently emit an over-budget mesh.
     """
     if max_triangles <= 0:
         return heights, pixel_mm, pixel_mm
+    min_faces = _mesh_face_count(1, 1)  # 12: the smallest mesh a 1x1 cell makes
+    if max_triangles < min_faces:
+        raise ValueError(
+            f"max_triangles must be 0 (unlimited) or >= {min_faces}, got {max_triangles}"
+        )
     h, w = heights.shape
     if _mesh_face_count(h, w) <= max_triangles:
         return heights, pixel_mm, pixel_mm
