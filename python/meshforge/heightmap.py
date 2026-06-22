@@ -55,33 +55,51 @@ def to_heights(
     return arr / 255.0 * max_height_mm
 
 
+def _mesh_face_count(h: int, w: int) -> int:
+    # Mirror heightmap_to_mesh exactly: 2 triangles per cell on top + 2 on the
+    # bottom (4*h*w) plus the perimeter walls (4*w + 4*h). Walls are negligible
+    # for square-ish grids but dominate for an extreme aspect ratio, so the
+    # budget check must include them — otherwise a long 1px-tall strip stays
+    # over budget even after the area-based shrink.
+    return 4 * h * w + 4 * w + 4 * h
+
+
 def downsample_heights(
     heights: np.ndarray,
     *,
     pixel_mm: float,
     max_triangles: int,
 ) -> tuple[np.ndarray, float]:
-    """Shrink a height grid so the extruded mesh stays under max_triangles.
+    """Shrink a height grid so the extruded mesh stays at/under max_triangles.
 
-    heightmap_to_mesh emits ~4 triangles per input cell (top + bottom, plus a
-    lower-order perimeter wall), so an N-cell grid becomes ~4N triangles.
-    Slicers like Bambu Studio reject / choke on multi-million-triangle meshes,
-    so when the grid would blow the budget we downsample it isotropically and
-    scale pixel_mm up by the same factor — the printed model keeps the same
-    physical footprint, only fine surface detail is lost. max_triangles <= 0
-    disables the cap. Returns (heights, pixel_mm) unchanged when already small
-    enough.
+    heightmap_to_mesh emits ~4 triangles per input cell (top + bottom) plus a
+    perimeter wall, so a high-res grid becomes a multi-million-triangle mesh
+    that slicers like Bambu Studio reject / choke on. When the grid would blow
+    the budget we downsample it and scale pixel_mm up by the same factor — the
+    printed model keeps the same physical footprint, only fine surface detail
+    is lost. max_triangles <= 0 disables the cap. Returns (heights, pixel_mm)
+    unchanged when already small enough.
     """
     if max_triangles <= 0:
         return heights, pixel_mm
     h, w = heights.shape
-    cells = h * w
-    budget_cells = max(1, max_triangles // 4)
-    if cells <= budget_cells:
+    if _mesh_face_count(h, w) <= max_triangles:
         return heights, pixel_mm
-    scale = (budget_cells / cells) ** 0.5
+    # Isotropic first guess from the dominant top/bottom term (4*h*w).
+    scale = (max_triangles / 4 / (h * w)) ** 0.5
     new_w = max(1, int(w * scale))
     new_h = max(1, int(h * scale))
+    # The floor + max(1, ...) clamp can leave one side too large when the aspect
+    # ratio is extreme (the short side pins at 1px while the wall term, which
+    # scales with the long side, blows the budget). Trim the longer side to the
+    # largest value that fits the exact face count — solving
+    # 4*(short*long + short + long) <= max_triangles for `long`. O(1), and a
+    # no-op for square-ish grids where the area guess already fits.
+    if _mesh_face_count(new_h, new_w) > max_triangles:
+        if new_w >= new_h:
+            new_w = max(1, int((max_triangles / 4 - new_h) / (new_h + 1)))
+        else:
+            new_h = max(1, int((max_triangles / 4 - new_w) / (new_w + 1)))
     # BOX (area-average) downsampling, not LANCZOS: no ringing/overshoot, so
     # heights stay within the original [0, max] range (a negative undershoot
     # would push z_top below the base and dent the print). 'F' mode carries the
@@ -90,6 +108,9 @@ def downsample_heights(
     img = img.resize((new_w, new_h), Image.BOX)
     out = np.asarray(img, dtype=np.float64)
     # Grow pixel_mm by the realized linear shrink (from the rounded area, so
-    # width/height rounding doesn't drift the physical size).
-    new_pixel_mm = pixel_mm * (cells / (new_h * new_w)) ** 0.5
+    # width/height rounding doesn't drift the physical size). For extreme aspect
+    # ratios the trim above is anisotropic, so a single scalar can't preserve
+    # both side lengths exactly; the area-based factor keeps the footprint area
+    # right, which is all that's meaningful for such a degenerate strip.
+    new_pixel_mm = pixel_mm * (h * w / (new_h * new_w)) ** 0.5
     return out, new_pixel_mm
