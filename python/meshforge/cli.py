@@ -454,15 +454,16 @@ def cmd_convert(args: argparse.Namespace) -> int:
         max_height_mm=settings["max_height_mm"],
         layers=settings["layers"],
     )
-    heights, pixel_mm = downsample_heights(
+    heights, pixel_mm_x, pixel_mm_y = downsample_heights(
         heights,
         pixel_mm=settings["pixel_mm"],
         max_triangles=settings["max_triangles"],
     )
     mesh = heightmap_to_mesh(
         heights,
-        pixel_mm=pixel_mm,
+        pixel_mm=pixel_mm_x,
         base_mm=settings["base_mm"],
+        pixel_mm_y=pixel_mm_y,
     )
     write_stl(mesh, settings["output"])
     print(summary(mesh, settings["output"]))

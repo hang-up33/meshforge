@@ -356,9 +356,9 @@ def _render_dam_tab() -> None:
                     )
                     # Cap the triangle count so slicers (Bambu Studio etc.) don't
                     # reject the STL for being too dense. Downsampling here bumps
-                    # pixel_mm to keep the printed footprint unchanged.
+                    # the X/Y pixel sizes to keep the printed footprint unchanged.
                     pre_h, pre_w = heights.shape
-                    heights, effective_pixel_mm = downsample_heights(
+                    heights, pixel_mm_x, pixel_mm_y = downsample_heights(
                         heights, pixel_mm=effective_pixel_mm, max_triangles=int(max_triangles)
                     )
                     if heights.shape != (pre_h, pre_w):
@@ -368,7 +368,9 @@ def _render_dam_tab() -> None:
                             f"約 {heights.shape[0] * heights.shape[1] * 4 / 1_000_000:.1f}M 三角形)。"
                             " 物理サイズは維持しています。上限は「最大三角形数」で調整できます。"
                         )
-                    mesh = heightmap_to_mesh(heights, pixel_mm=effective_pixel_mm, base_mm=base_mm)
+                    mesh = heightmap_to_mesh(
+                        heights, pixel_mm=pixel_mm_x, base_mm=base_mm, pixel_mm_y=pixel_mm_y
+                    )
                     stl_bytes = serialize(mesh)
     finally:
         Path(tmp_path).unlink(missing_ok=True)

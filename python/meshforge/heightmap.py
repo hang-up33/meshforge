@@ -69,22 +69,24 @@ def downsample_heights(
     *,
     pixel_mm: float,
     max_triangles: int,
-) -> tuple[np.ndarray, float]:
+) -> tuple[np.ndarray, float, float]:
     """Shrink a height grid so the extruded mesh stays at/under max_triangles.
 
     heightmap_to_mesh emits ~4 triangles per input cell (top + bottom) plus a
     perimeter wall, so a high-res grid becomes a multi-million-triangle mesh
     that slicers like Bambu Studio reject / choke on. When the grid would blow
-    the budget we downsample it and scale pixel_mm up by the same factor — the
-    printed model keeps the same physical footprint, only fine surface detail
-    is lost. max_triangles <= 0 disables the cap. Returns (heights, pixel_mm)
-    unchanged when already small enough.
+    the budget we downsample it and scale the X/Y pixel sizes up by each axis's
+    realized shrink so the printed model keeps the same physical dimensions —
+    only fine surface detail is lost. Returns (heights, pixel_mm_x, pixel_mm_y);
+    the two sizes match for square-ish grids and differ only when the trim below
+    is anisotropic. max_triangles <= 0 (or an already-small grid) returns the
+    input unchanged with pixel_mm on both axes.
     """
     if max_triangles <= 0:
-        return heights, pixel_mm
+        return heights, pixel_mm, pixel_mm
     h, w = heights.shape
     if _mesh_face_count(h, w) <= max_triangles:
-        return heights, pixel_mm
+        return heights, pixel_mm, pixel_mm
     # Isotropic first guess from the dominant top/bottom term (4*h*w).
     scale = (max_triangles / 4 / (h * w)) ** 0.5
     new_w = max(1, int(w * scale))
@@ -100,6 +102,16 @@ def downsample_heights(
             new_w = max(1, int((max_triangles / 4 - new_h) / (new_h + 1)))
         else:
             new_h = max(1, int((max_triangles / 4 - new_w) / (new_w + 1)))
+    # The analytic trim assumes the other side is fixed; at a tiny budget the
+    # only fit may need both sides reduced (e.g. 2x2 @ max_triangles=16 wants
+    # 1x1, not 2x1). Tighten the longer side one px at a time until the exact
+    # count fits or we hit 1x1. Runs ~0 iterations after the trim above, so it
+    # only mops up these degenerate cases.
+    while _mesh_face_count(new_h, new_w) > max_triangles and (new_h > 1 or new_w > 1):
+        if new_w >= new_h:
+            new_w -= 1
+        else:
+            new_h -= 1
     # BOX (area-average) downsampling, not LANCZOS: no ringing/overshoot, so
     # heights stay within the original [0, max] range (a negative undershoot
     # would push z_top below the base and dent the print). 'F' mode carries the
@@ -107,10 +119,9 @@ def downsample_heights(
     img = Image.fromarray(np.asarray(heights, dtype=np.float32), mode="F")
     img = img.resize((new_w, new_h), Image.BOX)
     out = np.asarray(img, dtype=np.float64)
-    # Grow pixel_mm by the realized linear shrink (from the rounded area, so
-    # width/height rounding doesn't drift the physical size). For extreme aspect
-    # ratios the trim above is anisotropic, so a single scalar can't preserve
-    # both side lengths exactly; the area-based factor keeps the footprint area
-    # right, which is all that's meaningful for such a degenerate strip.
-    new_pixel_mm = pixel_mm * (h * w / (new_h * new_w)) ** 0.5
-    return out, new_pixel_mm
+    # Scale each axis by its own shrink ratio so the physical footprint is
+    # preserved exactly per side: new_w * pixel_mm_x == w * pixel_mm. This holds
+    # even when new_w/new_h were trimmed anisotropically.
+    pixel_mm_x = pixel_mm * w / new_w
+    pixel_mm_y = pixel_mm * h / new_h
+    return out, pixel_mm_x, pixel_mm_y
