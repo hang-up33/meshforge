@@ -5,7 +5,7 @@ import json
 import math
 import sys
 
-from meshforge.heightmap import load_grayscale, to_heights
+from meshforge.heightmap import downsample_heights, load_grayscale, to_heights
 from meshforge.mesh import heightmap_to_mesh
 from meshforge.stl import summary, write_stl
 
@@ -18,6 +18,12 @@ DEFAULTS = {
     "pixel_mm": 0.5,        # each input pixel is a pixel_mm × pixel_mm cell in X/Y
     "max_height_mm": 10.0,  # brightness 255 -> this many mm tall
     "base_mm": 1.0,         # solid base thickness
+    # Triangle budget. The mesh is ~4 triangles per input pixel, so a high-res
+    # photo (millions of px) yields a multi-million-triangle STL that slicers
+    # like Bambu Studio refuse ("too many triangles"). When the heightmap would
+    # exceed this, it is downsampled (physical size preserved) before meshing.
+    # 0 disables the cap.
+    "max_triangles": 1_000_000,
     # Step 11: 多段階の高さレイヤー。明度バンドごとに固定高を返す形に
     # 拡張可能。None なら従来の threshold / max_height_mm 経路のまま。
     "layers": None,
@@ -45,6 +51,7 @@ JSON_TYPES = {
     "pixel_mm": "number",
     "max_height_mm": "number",
     "base_mm": "number",
+    "max_triangles": "integer",
     "layers": "layer list or null",
     "mode": "string",
 }
@@ -57,6 +64,8 @@ def _matches_json_type(value, kind: str) -> bool:
         return isinstance(value, bool)
     if kind == "integer or null":
         return value is None or (isinstance(value, int) and not isinstance(value, bool))
+    if kind == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
     if kind == "number":
         return isinstance(value, (int, float)) and not isinstance(value, bool)
     if kind == "layer list or null":
@@ -147,6 +156,17 @@ def _add_convert_args(c: argparse.ArgumentParser) -> None:
         default=argparse.SUPPRESS,
         metavar="V",
         help="solid base thickness in mm; default 1.0",
+    )
+    c.add_argument(
+        "--max-triangles",
+        dest="max_triangles",
+        type=int,
+        default=argparse.SUPPRESS,
+        metavar="N",
+        help="cap the mesh at ~N triangles by downsampling the heightmap "
+             "(physical size preserved); default 1000000, 0 disables. Lower "
+             "this if your slicer rejects the STL for having too many triangles "
+             "(N is an upper bound, so a smaller value yields fewer triangles).",
     )
     c.add_argument(
         "--mode",
@@ -368,6 +388,14 @@ def validate(s: dict) -> str | None:
     t = s["threshold"]
     if t is not None and not 0 <= t <= 255:
         return "threshold must be in 0..255"
+    mt = s["max_triangles"]
+    if mt < 0:
+        return "max_triangles must be >= 0 (0 disables the cap)"
+    # The smallest possible mesh (a 1x1 cell) is 12 triangles, so any positive
+    # budget below that is unreachable — reject it rather than emit an
+    # over-budget STL that breaks the cap's contract.
+    if 0 < mt < 12:
+        return "max_triangles must be 0 (unlimited) or >= 12 (the smallest possible mesh)"
     # NaN / inf すり抜け防止: `nan > 0` も `nan <= 0` も False になるので
     # 単純な ">0" だけだと validate を素通りして NaN 座標のメッシュが
     # できる。json.load や float() は NaN/Infinity を受理するため
@@ -433,10 +461,16 @@ def cmd_convert(args: argparse.Namespace) -> int:
         max_height_mm=settings["max_height_mm"],
         layers=settings["layers"],
     )
-    mesh = heightmap_to_mesh(
+    heights, pixel_mm_x, pixel_mm_y = downsample_heights(
         heights,
         pixel_mm=settings["pixel_mm"],
+        max_triangles=settings["max_triangles"],
+    )
+    mesh = heightmap_to_mesh(
+        heights,
+        pixel_mm=pixel_mm_x,
         base_mm=settings["base_mm"],
+        pixel_mm_y=pixel_mm_y,
     )
     write_stl(mesh, settings["output"])
     print(summary(mesh, settings["output"]))

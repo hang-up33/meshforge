@@ -53,3 +53,82 @@ def to_heights(
     if threshold is not None:
         arr = np.where(arr >= threshold, 255.0, 0.0)
     return arr / 255.0 * max_height_mm
+
+
+def _mesh_face_count(h: int, w: int) -> int:
+    # Mirror heightmap_to_mesh exactly: 2 triangles per cell on top + 2 on the
+    # bottom (4*h*w) plus the perimeter walls (4*w + 4*h). Walls are negligible
+    # for square-ish grids but dominate for an extreme aspect ratio, so the
+    # budget check must include them — otherwise a long 1px-tall strip stays
+    # over budget even after the area-based shrink.
+    return 4 * h * w + 4 * w + 4 * h
+
+
+def downsample_heights(
+    heights: np.ndarray,
+    *,
+    pixel_mm: float,
+    max_triangles: int,
+) -> tuple[np.ndarray, float, float]:
+    """Shrink a height grid so the extruded mesh stays at/under max_triangles.
+
+    heightmap_to_mesh emits ~4 triangles per input cell (top + bottom) plus a
+    perimeter wall, so a high-res grid becomes a multi-million-triangle mesh
+    that slicers like Bambu Studio reject / choke on. When the grid would blow
+    the budget we downsample it and scale the X/Y pixel sizes up by each axis's
+    realized shrink so the printed model keeps the same physical dimensions —
+    only fine surface detail is lost. Returns (heights, pixel_mm_x, pixel_mm_y);
+    the two sizes match for square-ish grids and differ only when the trim below
+    is anisotropic. max_triangles <= 0 (or an already-small grid) returns the
+    input unchanged with pixel_mm on both axes. A positive budget below the
+    12-face minimum of a 1x1 mesh is impossible to honor, so it raises
+    ValueError rather than silently emit an over-budget mesh.
+    """
+    if max_triangles <= 0:
+        return heights, pixel_mm, pixel_mm
+    min_faces = _mesh_face_count(1, 1)  # 12: the smallest mesh a 1x1 cell makes
+    if max_triangles < min_faces:
+        raise ValueError(
+            f"max_triangles must be 0 (unlimited) or >= {min_faces}, got {max_triangles}"
+        )
+    h, w = heights.shape
+    if _mesh_face_count(h, w) <= max_triangles:
+        return heights, pixel_mm, pixel_mm
+    # Isotropic first guess from the dominant top/bottom term (4*h*w).
+    scale = (max_triangles / 4 / (h * w)) ** 0.5
+    new_w = max(1, int(w * scale))
+    new_h = max(1, int(h * scale))
+    # The floor + max(1, ...) clamp can leave one side too large when the aspect
+    # ratio is extreme (the short side pins at 1px while the wall term, which
+    # scales with the long side, blows the budget). Trim the longer side to the
+    # largest value that fits the exact face count — solving
+    # 4*(short*long + short + long) <= max_triangles for `long`. O(1), and a
+    # no-op for square-ish grids where the area guess already fits.
+    if _mesh_face_count(new_h, new_w) > max_triangles:
+        if new_w >= new_h:
+            new_w = max(1, int((max_triangles / 4 - new_h) / (new_h + 1)))
+        else:
+            new_h = max(1, int((max_triangles / 4 - new_w) / (new_w + 1)))
+    # The analytic trim assumes the other side is fixed; at a tiny budget the
+    # only fit may need both sides reduced (e.g. 2x2 @ max_triangles=16 wants
+    # 1x1, not 2x1). Tighten the longer side one px at a time until the exact
+    # count fits or we hit 1x1. Runs ~0 iterations after the trim above, so it
+    # only mops up these degenerate cases.
+    while _mesh_face_count(new_h, new_w) > max_triangles and (new_h > 1 or new_w > 1):
+        if new_w >= new_h:
+            new_w -= 1
+        else:
+            new_h -= 1
+    # BOX (area-average) downsampling, not LANCZOS: no ringing/overshoot, so
+    # heights stay within the original [0, max] range (a negative undershoot
+    # would push z_top below the base and dent the print). 'F' mode carries the
+    # float mm heights through PIL's resampler without quantizing to 8-bit.
+    img = Image.fromarray(np.asarray(heights, dtype=np.float32), mode="F")
+    img = img.resize((new_w, new_h), Image.BOX)
+    out = np.asarray(img, dtype=np.float64)
+    # Scale each axis by its own shrink ratio so the physical footprint is
+    # preserved exactly per side: new_w * pixel_mm_x == w * pixel_mm. This holds
+    # even when new_w/new_h were trimmed anisotropically.
+    pixel_mm_x = pixel_mm * w / new_w
+    pixel_mm_y = pixel_mm * h / new_h
+    return out, pixel_mm_x, pixel_mm_y

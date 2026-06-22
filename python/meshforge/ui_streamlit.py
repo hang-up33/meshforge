@@ -65,7 +65,7 @@ from streamlit_stl import stl_from_text
 from meshforge.building.assemble import build_mesh
 from meshforge.building.extract import extract_walls
 from meshforge.cli import DEFAULTS
-from meshforge.heightmap import load_grayscale, to_heights
+from meshforge.heightmap import downsample_heights, load_grayscale, to_heights
 from meshforge.mesh import heightmap_to_mesh
 from meshforge.stl import serialize, summary
 
@@ -269,6 +269,15 @@ def _render_dam_tab() -> None:
                 step=0.1,
                 format="%.2f",
             )
+            max_triangles = st.number_input(
+                "最大三角形数（スライサー対策）",
+                min_value=0,
+                value=DEFAULTS["max_triangles"],
+                step=100_000,
+                help="この数を超えるとハイトマップを自動で縮小し、物理サイズは保ったまま"
+                     "三角形を減らします。Bambu Studio などが「三角形が多すぎる」と"
+                     "拒否する場合に有効。0 で無制限。",
+            )
 
         submitted = st.form_submit_button(
             "変換",
@@ -277,6 +286,12 @@ def _render_dam_tab() -> None:
         )
 
     if not (submitted and uploaded is not None):
+        return
+
+    # A positive budget below the 12-face minimum of a 1x1 mesh can't be honored
+    # (downsample_heights raises on it), so bail early with a friendly message.
+    if 0 < int(max_triangles) < 12:
+        st.error("最大三角形数は 0（無制限）または 12 以上を指定してください。")
         return
 
     # load_grayscale dispatches on the path suffix to decide PNG vs PDF, so we
@@ -345,7 +360,23 @@ def _render_dam_tab() -> None:
                         threshold=threshold if use_threshold else None,
                         max_height_mm=max_height_mm,
                     )
-                    mesh = heightmap_to_mesh(heights, pixel_mm=effective_pixel_mm, base_mm=base_mm)
+                    # Cap the triangle count so slicers (Bambu Studio etc.) don't
+                    # reject the STL for being too dense. Downsampling here bumps
+                    # the X/Y pixel sizes to keep the printed footprint unchanged.
+                    pre_h, pre_w = heights.shape
+                    heights, pixel_mm_x, pixel_mm_y = downsample_heights(
+                        heights, pixel_mm=effective_pixel_mm, max_triangles=int(max_triangles)
+                    )
+                    if heights.shape != (pre_h, pre_w):
+                        st.info(
+                            "三角形数の上限のためハイトマップを縮小しました "
+                            f"({pre_w}×{pre_h} → {heights.shape[1]}×{heights.shape[0]} px、"
+                            f"約 {heights.shape[0] * heights.shape[1] * 4 / 1_000_000:.1f}M 三角形)。"
+                            " 物理サイズは維持しています。上限は「最大三角形数」で調整できます。"
+                        )
+                    mesh = heightmap_to_mesh(
+                        heights, pixel_mm=pixel_mm_x, base_mm=base_mm, pixel_mm_y=pixel_mm_y
+                    )
                     stl_bytes = serialize(mesh)
     finally:
         Path(tmp_path).unlink(missing_ok=True)
